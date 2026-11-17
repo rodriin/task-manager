@@ -1,0 +1,6 @@
+# Local development only: exposes Postgres so the API can run outside Docker.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up db
+services:
+  db:
+    ports:
+      - "5432:5432"

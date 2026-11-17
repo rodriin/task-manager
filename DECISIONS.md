@@ -134,6 +134,18 @@ If time allows: pin, paginate, sort, filter, search, print.
 
 ## Initial data seed
 
-**Seed ids are fixed, and the id counter is moved past them.** The seed sets task ids 1–66 itself so links stay predictable: every task belongs to user 1, and the API acts as user 1. Postgres does not move its id counter when an insert gives its own id, so the first task created in the app would get id 1 and fail as a duplicate. After seeding, a `setval` on each table moves the counter to the highest id, so the next new task gets 67.
+**Seed ids are fixed; the id counter is moved past them.** Fixed ids keep every task tied to user 1. Postgres doesn't advance its counter for explicit ids, so without a `setval` the first new task would get id 1 and fail as a duplicate.
 
-**Seed dates are fixed at the first start.** The seed stores day offsets that turn into real dates when the database is first seeded, and the seed only runs on an empty tasks table. If the app is started on Monday and opened again on Wednesday, "today" has moved and the demo data looks stale. `docker compose down -v` wipes the data, and the next start seeds it again from the current date. I considered re-seeding on every start but rejected it, because it would wipe anything entered during the demo.
+**Seed dates are set at the first start.** The seed runs only on an empty database, so on a later day "today" has drifted. `docker compose down -v` re-seeds from the current date. Re-seeding on every start was rejected: it would wipe anything entered during the demo.
+
+---
+
+## API routes
+
+**List, create, update. No delete.** Clone is a create; complete, snooze, pin and archive are updates. Archiving is how a task goes away (in the near future), so nothing is lost.
+
+**Server clears pin/snooze on archive, and snooze on complete.** Otherwise every screen has to remember it or the DB checks reject the save. The checks stay as the backstop.
+
+**Time logic lives in the UI.** "Now", snooze times and the reminder shift depend on the viewer's local day. The server stores and checks.
+
+**Rule violations return 422 with the constraint name.** The names match schema.sql. Unknown fields and times without a time zone are rejected too, so a typo fails loudly.

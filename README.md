@@ -2,7 +2,7 @@
 
 A first cut of a single place for a detachment officer-in-charge to keep every task, built for the STR Mission Applications · Full Stack Take-Home.
 
-See [PREBRIEF.md](PREBRIEF.md) for what we heard and what we built, [DECISIONS.md](DECISIONS.md) for the running log of choices made along the way, and [REQUIREMENTS.md](REQUIREMENTS.md) for the provided prerequisites behind this code base and project.
+See [PREBRIEF.md](PREBRIEF.md) for what we heard and what we built, [DECISIONS.md](DECISIONS.md) for the running log of choices made along the way, [PLAN.md](PLAN.md) for the implementation plan, and [REQUIREMENTS.md](REQUIREMENTS.md) for the provided prerequisites behind this code base and project.
 
 ## Run it
 
@@ -14,7 +14,7 @@ docker compose up
 
 Then open <http://localhost:8000>.
 
-The first run builds the image, creates the database tables and loads the sample data. Sample dates are generated relative to the day you start it, so there are always tasks due today, tasks due tomorrow and a few overdue.
+The first run builds the image, creates the database tables and loads the sample data. Sample dates are generated relative to the day you first start it, so there are always tasks due today, tasks due tomorrow and a few overdue.
 
 | Command | What it does |
 |---|---|
@@ -34,6 +34,31 @@ No setup is needed. One optional setting:
 Example app start command: `DEMO_TZ=America/Los_Angeles docker compose up`
 
 `DEMO_TZ` takes an IANA time zone name, such as `Europe/London` or `Asia/Tokyo`. Names are case-sensitive. See the [list of tz database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (use the "TZ identifier" column).
+
+### Look at the data
+
+With the app running, open a SQL prompt inside the database container (no local Postgres needed):
+
+```bash
+docker compose exec db psql -U taskmanager -d taskmanager
+```
+
+Columns are snake_case in SQL (`remind_at`, `owner_id`) and camelCase in the JSON API (`remindAt`, `ownerId`). Timestamps are stored in UTC; set the session time zone to read them in local time:
+
+```sql
+SET timezone = 'America/New_York';
+
+-- Open tasks in deadline order, with the derived overdue flag.
+SELECT id, title, deadline, remind_at, status, deadline < now() AS overdue
+FROM tasks
+WHERE completed_at IS NULL AND archived_at IS NULL
+ORDER BY deadline NULLS LAST;
+
+-- Table definition, including the rules the database enforces.
+\d tasks
+```
+
+Type `\q` to leave. More checks are in [PLAN.md](PLAN.md).
 
 ## First-cut scope
 
@@ -127,8 +152,9 @@ All timestamps are stored in UTC and shown in the viewer's local time.
 ├── schema.sql               # reference schema with constraints
 ├── api/
 │   ├── main.py
+│   ├── models.py            # tables; mirror schema.sql, checks included
 │   ├── requirements.txt
-│   └── seed/                # sample data and the script that dates it
+│   └── seed/                # sample data, the script that dates it, and the loader (load.py)
 └── web/                     # Vite + React app
 ```
 
@@ -170,3 +196,4 @@ npm run build   # type-check and production build
 - Single user. There is no login; the API acts as the one seeded user.
 - Sorting, filtering, search and pagination run in the browser. That is fine for hundreds or a few thousand tasks and would move to the server beyond that.
 - No migration tool yet. Tables are created at startup.
+- Sample data is dated once, when the database is first seeded. On a later day, run `docker compose down -v` and start again to re-date it.

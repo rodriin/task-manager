@@ -129,3 +129,11 @@ If time allows: pin, paginate, sort, filter, search, print.
 **schema.sql is the reference, not what runs.** Tables are created by SQLModel at startup, which will not add the checks or the partial index unless the models declare them. The models have to copy schema.sql, or the rules I am relying on will not exist in the running app.
 
 **Testing the reviewer path.** Plain docker compose up reuses an image that is already built, so it can hide a broken build. Before calling something done: docker compose down -v --rmi local, then docker compose up, or better, a fresh clone in a new folder, which also catches files that never got committed.
+
+---
+
+## Initial data seed
+
+**Seed ids are fixed, and the id counter is moved past them.** The seed sets task ids 1–66 itself so links stay predictable: every task belongs to user 1, and the API acts as user 1. Postgres does not move its id counter when an insert gives its own id, so the first task created in the app would get id 1 and fail as a duplicate. After seeding, a `setval` on each table moves the counter to the highest id, so the next new task gets 67.
+
+**Seed dates are fixed at the first start.** The seed stores day offsets that turn into real dates when the database is first seeded, and the seed only runs on an empty tasks table. If the app is started on Monday and opened again on Wednesday, "today" has moved and the demo data looks stale. `docker compose down -v` wipes the data, and the next start seeds it again from the current date. I considered re-seeding on every start but rejected it, because it would wipe anything entered during the demo.

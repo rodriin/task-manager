@@ -7,7 +7,8 @@ Working plan for the build, split into parts. A part is a unit of planned work, 
 | 1 | Data seed: models and seed loader | Done |
 | 2 | API routes: list, create, update | Done |
 | 3 | UI: the scan (Pinned, Today, Tomorrow, Reminders), read-only | Done |
-| 4+ | Not planned yet | — |
+| 4 | UI: All tasks tab, a full table with search, filters, sort and pages | Built and verified, ready to commit |
+| 5+ | Not planned yet | — |
 
 ---
 
@@ -232,3 +233,103 @@ Tests cover: overdue flips at the deadline; a reminder turns on at its time; pin
 - [x] Local dev: `npm run dev` serves the page and the `/api` proxy reaches the API.
 
 Verified 2026-11-17 at 18:28 New York time, rendered in headless Chrome.
+
+---
+
+## Part 4: All tasks tab
+
+**Goal:** a second tab, **All tasks**, shows every task ever entered (open, completed and archived, any date) in one table, built with TanStack Table v9 so search, filters, sorting and pages come with little code. The scan stays the opening screen.
+
+**Out of scope:** opening or editing a task from a row (detail and edit is the next part), clone, page size choice, saving filters between visits, server-side paging.
+
+### Rules
+
+- **Tabs:** "Today" (the scan, default) and "All tasks", in the header. `useState` in `App`, no router. Switching tabs keeps the table's search, filters, sort and page.
+- **Everything is in the table:** open, completed and archived. Nothing is hidden until a filter hides it.
+- **Pinned tasks are ordinary rows here.** The scan already has a Pinned section; in the table, the Pin column can be sorted like any other.
+- **Search, filters and sort work together:** search and filters narrow the rows, the sort orders what's left, then it's split into pages.
+- **Search** looks in title, description, category, type and priority, case-insensitive, as you type. That covers category, type and priority without a dropdown each ("supply", "sign-off", "high").
+- **Filters** (two dropdowns):
+  - **Status:** All (default), Open, Not started, In progress, Completed, Archived. Open = not completed and not archived (Not started plus In progress, overdue or not). Not started and In progress are the stored status of open tasks.
+  - **Deadline:** Any (default), Overdue, Today, Tomorrow, This week, This month, This quarter, Later, No deadline. Today and Tomorrow are calendar days; This week (Monday to Sunday), This month and This quarter are the whole calendar period, past days included, so the weekly and quarterly rhythm items show whether they are coming, overdue or done; calendar quarters line up with the US federal fiscal quarters; the options overlap; Later is after the end of this quarter; Overdue is deadline passed and not completed.
+- **Not filters, on purpose:** pinned and "has a reminder". Sorting the Pin or Reminder column groups them instead (pinned first; empty reminders last).
+- **Sort:** click a column heading; the first click is always ascending (pinned first, A to Z, earliest first), a second reverses, a third clears. Any new sort goes back to page 1. Default: no sort, so rows come in the API's order (by id, the order they were entered); clearing a sort returns to it. Empty dates sort last in either direction.
+- **Pages:** 10 rows per page, Previous / Next, "Page 2 of 7", and the count of matching tasks. Changing search or a filter goes back to page 1.
+- **Colour:**
+  - red = overdue, amber = reached reminder, same as the scan (open tasks only);
+  - completed rows are muted green: done, something good;
+  - archived rows are muted grey.
+- **Empty result:** "No tasks match" with a button to clear search and filters.
+- **Accessibility:**
+  - every field has a `<label htmlFor>` (the search label is visually hidden; a placeholder is not a label);
+  - the toolbar is a search landmark; the count, page number and "No tasks match" are announced (live regions);
+  - tabs follow the ARIA tabs pattern: `tablist`/`tab`/`tabpanel`, Tab reaches the selected tab, arrow keys, Home and End switch;
+  - sortable headings are buttons, with `aria-sort` and `scope="col"`; the arrows are hidden from screen readers; the table has a visually hidden caption;
+  - the pin emoji is `role="img"` with a label; overdue is a word ("Overdue"), not only red;
+  - a visible focus ring on everything focusable (`index.css`).
+
+### Layout
+
+One toolbar row above the table, wrapping on narrow screens:
+
+```
+[ Search title, notes, category…        ]  Status [All ▾]  Deadline [Any ▾]  Clear     23 tasks
+```
+
+### Columns
+
+| Column | Shows | Sort |
+| --- | --- | --- |
+| Pin | pin marker | pinned first, then reversed |
+| Title | title | A–Z |
+| Status | Not started, In progress, Completed, Archived; red "Overdue" tag when overdue | by that order |
+| Priority | Low, Medium, High (High stays neutral) | by rank, not alphabet |
+| Category | category or blank | A–Z |
+| Type | type or blank | A–Z |
+| Deadline | date and 24-hour time | by time |
+| Reminder | date and time, amber when reached | by time |
+| Completed | date | by time |
+| Created | date | by time |
+
+### 4.1 Helpers: `web/src/helpers/taskHelpers.ts`
+
+- `alertState(task, now)`: `'overdue'`, `'reminder'` or none; open tasks only. Used for colour by both the scan rows and the table.
+- `taskStatus(task)`: Archived, Completed, In progress or Not started, in that order of precedence.
+- `matchesStatus`, `matchesDeadline(task, filter, now)` and `matchesSearch`: one function per filter. A task can match both Overdue and Today (overdue earlier today); each option is checked on its own.
+- `web/src/helpers/formatDates.ts`: `when` (time, day and time, or with the year when not this year) and `day`, shared by the scan and the table.
+- Tests added to `taskHelpers.test.ts`.
+
+### 4.2 Table: `web/src/components/TaskTable.tsx`
+
+- `useTable` (v9) with sorting, column filtering, global filtering and pagination. The table stays mounted (hidden) when the Today tab is shown, so its state survives tab switches.
+- Column definitions next to the table. Date columns return `undefined` for empty dates, so `sortUndefined: 'last'` puts them at the end in both directions. Status and Priority sort by rank.
+- Columns are rebuilt when the clock ticks (overdue and "today" depend on it), so the automatic page reset is off; search, filter and sort changes reset to page 1 themselves.
+- `sortDescFirst: false`: TanStack would otherwise sort number columns descending on the first click.
+- `Tag.tsx`: the small label (High, In progress, Overdue), now shared by `TaskRow` and the table.
+- `TaskTable.test.tsx`: pages, the default sort, Pin sort, search plus filters plus sort, and the empty result.
+
+### 4.3 Toolbar: `web/src/components/TaskTableToolbar.tsx`
+
+- Search box, the two filters, Clear, and the count.
+
+### 4.4 Screen: `web/src/App.tsx`
+
+- Tab buttons in the header; the scan and `TaskTable` use the same `tasks` query (no second request).
+
+### 4.5 Verify
+
+- [x] `npm test` (29 tests), `npm run lint`, `npm run build` pass.
+- [x] Helper tests: each status, and each deadline option around midnight and the end of the week.
+- [x] In the app: All tasks shows 66 tasks across 7 pages.
+- [x] Status = Archived shows the 13 archived tasks; Completed shows the 8 completed and not archived ones, in muted green (archived wins over completed); Open shows none of either.
+- [x] Deadline = No deadline shows the 9 tasks without one; Open plus Overdue shows 10 red rows with the Overdue tag.
+- [x] Search "tow" finds the 2 tow bar tasks; "supply" finds 11; search plus a Title sort combine; Clear resets.
+- [x] Sorting Pin puts the 3 pinned tasks first and goes back to page 1.
+- [x] Switching to Today and back keeps the table's search, sort and page; the Today tab still shows Pinned 3, Today 9, Tomorrow 3, Reminders 1.
+- [x] Phone width (390px): the toolbar wraps and the table scrolls inside its box; the page itself doesn't scroll sideways.
+- [x] `docker compose up --build` serves it at <http://localhost:8000>.
+- [x] No default sort: page 1 is ids 1 to 10, current work (overdue, today, a reminder), not old archived tasks.
+- [x] This week 18, This month 36, This quarter 42, Later 4, matching a count from the API data; This week plus "roll-up" finds Friday's status roll-up.
+- [x] Keyboard only: Tab lands on the selected tab, ArrowRight selects All tasks, the next Tab reaches the search box with a visible focus ring. Each label points at its field.
+
+Verified 2026-11-17 at 23:32 and 2026-11-18 at 07:07 New York time, driven in headless Chrome.

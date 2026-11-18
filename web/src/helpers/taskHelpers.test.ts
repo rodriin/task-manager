@@ -1,5 +1,14 @@
 import type { Task } from '../types'
-import { buildScan, isOverdue, isReminderActive } from './taskHelpers'
+import {
+  alertState,
+  buildScan,
+  isOverdue,
+  isReminderActive,
+  matchesDeadline,
+  matchesSearch,
+  matchesStatus,
+  taskStatus,
+} from './taskHelpers'
 
 // Fixed "now": Tuesday 17 Nov 2026, 10:00 in the machine's local time.
 // Dates are built with local-time constructors, so the tests pass in any time zone.
@@ -166,5 +175,122 @@ describe('buildScan order', () => {
     const old = task({ remindAt: at(12, 7) })
     const { reminders } = buildScan([recent, old], NOW)
     expect(ids(reminders)).toEqual([old.id, recent.id])
+  })
+})
+
+describe('alertState', () => {
+  it('is overdue before reminder, and nothing once completed or archived', () => {
+    const late = task({ deadline: at(17, 9), remindAt: at(17, 8) })
+    expect(alertState(late, NOW)).toBe('overdue')
+    expect(alertState(task({ remindAt: at(17, 9) }), NOW)).toBe('reminder')
+    expect(alertState(task({ deadline: at(18, 9) }), NOW)).toBeNull()
+    expect(alertState({ ...late, completedAt: at(17, 9) }, NOW)).toBeNull()
+    expect(alertState({ ...late, archivedAt: at(17, 9) }, NOW)).toBeNull()
+  })
+})
+
+describe('taskStatus and the Status filter', () => {
+  it('puts Archived before Completed, then the stored status', () => {
+    expect(taskStatus(task())).toBe('Not started')
+    expect(taskStatus(task({ status: 'In-Progress' }))).toBe('In progress')
+    expect(taskStatus(task({ completedAt: at(16, 9) }))).toBe('Completed')
+    expect(
+      taskStatus(task({ completedAt: at(16, 9), archivedAt: at(16, 10) })),
+    ).toBe('Archived')
+  })
+
+  it('Open matches Not started and In progress, overdue or not', () => {
+    expect(matchesStatus(task(), 'Open')).toBe(true)
+    expect(
+      matchesStatus(
+        task({ status: 'In-Progress', deadline: at(16, 9) }),
+        'Open',
+      ),
+    ).toBe(true)
+    expect(matchesStatus(task({ completedAt: at(16, 9) }), 'Open')).toBe(false)
+    expect(matchesStatus(task({ archivedAt: at(16, 9) }), 'Open')).toBe(false)
+  })
+
+  it('In progress matches only open tasks stored as In-Progress', () => {
+    const started = task({ status: 'In-Progress' })
+    expect(matchesStatus(started, 'In progress')).toBe(true)
+    expect(matchesStatus(started, 'Not started')).toBe(false)
+    expect(
+      matchesStatus({ ...started, completedAt: at(16, 9) }, 'In progress'),
+    ).toBe(false)
+  })
+})
+
+describe('Deadline filter', () => {
+  // NOW is Tuesday 17 Nov; the week ends at the end of Sunday 22 Nov.
+  const due = (day: number, hour = 12) => task({ deadline: at(day, hour) })
+
+  it('splits Today and Tomorrow at local midnight', () => {
+    expect(matchesDeadline(due(17, 23), 'Today', NOW)).toBe(true)
+    expect(matchesDeadline(due(18, 0), 'Today', NOW)).toBe(false)
+    expect(matchesDeadline(due(18, 0), 'Tomorrow', NOW)).toBe(true)
+    expect(matchesDeadline(due(19, 0), 'Tomorrow', NOW)).toBe(false)
+  })
+
+  it('counts a task due earlier today as both Today and Overdue', () => {
+    expect(matchesDeadline(due(17, 9), 'Today', NOW)).toBe(true)
+    expect(matchesDeadline(due(17, 9), 'Overdue', NOW)).toBe(true)
+    expect(matchesDeadline(due(16, 9), 'Today', NOW)).toBe(false)
+  })
+
+  it('This week is Monday to Sunday, past days included', () => {
+    // Monday 16 Nov to Sunday 22 Nov.
+    expect(matchesDeadline(due(16, 0), 'This week', NOW)).toBe(true) // Monday, already past
+    expect(matchesDeadline(due(22, 23), 'This week', NOW)).toBe(true)
+    expect(matchesDeadline(due(15, 23), 'This week', NOW)).toBe(false) // last Sunday
+    expect(matchesDeadline(due(23, 0), 'This week', NOW)).toBe(false) // next Monday
+  })
+
+  it('This month is the whole of November; This quarter October to December', () => {
+    const on = (month: number, day: number) =>
+      task({ deadline: new Date(2026, month, day, 12) })
+    expect(matchesDeadline(on(10, 1), 'This month', NOW)).toBe(true)
+    expect(matchesDeadline(on(10, 30), 'This month', NOW)).toBe(true)
+    expect(matchesDeadline(on(11, 1), 'This month', NOW)).toBe(false)
+    expect(matchesDeadline(on(9, 1), 'This quarter', NOW)).toBe(true)
+    expect(matchesDeadline(on(11, 31), 'This quarter', NOW)).toBe(true)
+    expect(matchesDeadline(on(8, 30), 'This quarter', NOW)).toBe(false)
+  })
+
+  it('Later is after the end of this quarter', () => {
+    expect(matchesDeadline(due(30), 'Later', NOW)).toBe(false)
+    expect(
+      matchesDeadline(
+        task({ deadline: new Date(2026, 11, 31, 23) }),
+        'Later',
+        NOW,
+      ),
+    ).toBe(false)
+    expect(
+      matchesDeadline(task({ deadline: new Date(2027, 0, 1) }), 'Later', NOW),
+    ).toBe(true)
+  })
+
+  it('No deadline matches only tasks without one; completed is never Overdue', () => {
+    expect(matchesDeadline(task(), 'No deadline', NOW)).toBe(true)
+    expect(matchesDeadline(due(17), 'No deadline', NOW)).toBe(false)
+    expect(matchesDeadline(task(), 'Today', NOW)).toBe(false)
+    const done = task({ deadline: at(16, 9), completedAt: at(16, 8) })
+    expect(matchesDeadline(done, 'Overdue', NOW)).toBe(false)
+  })
+})
+
+describe('matchesSearch', () => {
+  it('looks in title, description, category, type and priority, ignoring case', () => {
+    const t = task({
+      title: 'Return the tow bar',
+      description: 'Borrowed from VFA-41',
+      category: 'Supply',
+      type: 'Sign-off',
+      priority: 'High',
+    })
+    for (const q of ['TOW', 'vfa', 'supply', 'sign-off', 'high', '  '])
+      expect(matchesSearch(t, q)).toBe(true)
+    expect(matchesSearch(t, 'brief')).toBe(false)
   })
 })

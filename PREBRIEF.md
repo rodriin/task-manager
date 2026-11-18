@@ -40,7 +40,7 @@ Key takeaways:
 What the tool aims to address day-one:
 
 - One place for every task, with a one-field quick capture (title only) so a task can be captured in seconds.
-- Opens on Today and Tomorrow, not the full list. The whole pile is one click away and includes archived tasks, marked as archived, so nothing is ever lost. Filters to hide them come later. This is the answer to "everything in there, but I can't look at everything".
+- Opens on Pinned, Today, Tomorrow and Reminders, not the full list. The whole pile is one click away and includes archived tasks, marked as archived, so nothing is ever lost. This is the answer to "everything in there, but I can't look at everything".
 - Alerts appear inside the app for anything overdue, due soon, or past its reminder time, and keep showing until it's done, archived or snoozed. Nothing buzzes. Snooze quiets an alert but the task stays visible, marked as snoozed. This is the answer to "hate pings, burned by silence".
 - Overdue is calculated from the deadline, so nothing has to be marked late by hand and there are no data inconsistencies between deadline and overdue caused by data manipulation.
 - Clone a task is the initial answer to the repetitive (weekly and quarterly) items.
@@ -58,13 +58,13 @@ Initial features:
 - Alerts for tasks due today or very soon
 - Alert snoozing
 - Feel good "You're caught up" message when today is clear
+- Pin tasks to the top of the today view
+- Pagination
+- Sort
+- Filtering
+- Search
 - If time allows (bonus points):
   - Print today's tasks
-  - Pin tasks to the top
-  - Pagination
-  - Sort
-  - Filtering
-  - Search
 
 Future features:
 
@@ -114,7 +114,14 @@ Assumptions and open questions:
 - **Where will you open this tool?** Ready room laptop, phone, both? Is there always good connectivity?
 - **Deadlines with a time of day:** is this useful, or do you prefer to keep it at the day-level?
 - **Is archiving a task useful?** Do you prefer to clean out old or incomplete tasks by archiving them or would you rather leave them be?
-- **Task order.** The first cut puts overdue tasks first, then pinned, then by deadline. Is that the right order for you?
+- **The scan and task order.** The first cut puts Pinned tasks first as its own section, and Today is overdue first, then by deadline just like Tomorrow. Then there is the Reminders section. Is that the right order for you? Do you want to add a Week section or any other section to the scan view?
+- **The default due time is 20:00.** Is that the right default due time?
+- **Untriggered reminders are not included in the Scan.** Should a reminder that hasn't gone off yet stay hidden from the scan?
+- **Full-list order:** tasks appear in the order they were entered. Should the inital sort be different?
+- **Filters:** are Status and Deadline enough, or do you want dropdowns for category, priority, pinned or "has a reminder"?
+- **Week and quarter:** does your week start on Monday? Do calendar quarters match how you think about quarterly paperwork? They line up with the federal fiscal quarters.
+- **Rows per page:** is 10 the right amount to have by default?
+
 
 ## Where AI tooling helped, and where I overrode it
 
@@ -128,6 +135,11 @@ AI helped me:
 - Scaffolded the Docker setup and the project commands.
 - It wrote a CLAUDE.md, a project instructions file for the AI coding agent. After I added the requirements doc, it also captured the brief's constraints there: the one-command run, the time box, that PREBRIEF must be human-written, and that DECISIONS is a running log.
 - It caught a gap in my alert rule: as written, a task would stop alerting once its deadline passed, which is exactly the sign-off failure. Overdue tasks now keep alerting until completed, archived or snoozed.
+- It copied every check and the partial index from schema.sql into the models, so the rules actually exist in the running database. It also checked the seed against them, including on both daylight-saving change days.
+- It suggested the server unpin and clear the snooze when a task is archived, and clear the snooze when one is completed. Otherwise every screen would have to remember this or the database would reject the save.
+- It built the All tasks table with search, filters, sorting and pages in the browser.
+- It flagged that with a deadline sort as the default, the full table view would opened on a page of grey archived tasks.
+- It added a lot of the missing accessibility once I flag that some was missing.
 
 I overrode or corrected AI:
 
@@ -137,8 +149,18 @@ I overrode or corrected AI:
 - The Personal category, renaming Managerial to Admin, the preferred name field and making Completed a calculated value were my calls.
 - It first advised against using TanStack Table and to use a migration tool, then reversed both when I pushed on timeline and on what I planned to build next.
 - I decided archived tasks stay in the full list, with archiving done as a normal edit, rather than building a filter now.
-- I set the default order for Today's tasks: overdue first, then pinned, then by deadline.
-
+- The scan layout was my call:
+  - a Pinned section above Today
+  - a Reminders section below Tomorrow
+  - only reminders that have already gone off appear
+  - amber for reminders, red for overdue
+- I chose 20:00 as the default due time, because 20:00 Eastern is still the workday in Pacific time. I also chose the 24-hour clock.
+- It ran Prettier with its default style and I asked it to revert those changes and add settings to use single quotes and less semicolons.
+- I rejected its folder names three times: lib/, views/ (a file named TaskView sounded like a React view), and API calls split into three files. I chose helpers/, components/ and a single api/client.ts.
+- It made This week, This month and This quarter start at today. I made them whole calendar periods (Monday to Sunday, past days included), so the weekly roll-up and quarterly paperwork show whether they're coming, overdue or done. It had "Later" as after this week; I made it after this quarter.
+- It suggested defaulting the Status filter to Open. I chose no default sort instead, so tasks appear in the order they were entered without any missing data.
+- I decided to have pinned tasks as ordinary rows in the full list, since the scan already has a Pinned section. This also made it possible to have a sortable Pin column.
+- I decided archived tasks stay in the full list because nothing should be missing and the Status filter can hide them.
 
 AI was wrong or inconsistent:
 
@@ -146,3 +168,9 @@ AI was wrong or inconsistent:
 - Its sample data had a task snoozed until the same moment its reminder fired; the new database check caught it.
 - Military details in the sample data are plausible but generic. I reviewed them by hand and updated them to the best of my knowledge.
 - I asked whether a reminder required a deadline. The schema already allowed a reminder on its own, but the AI's own summary in CLAUDE.md was worded ambiguously enough to suggest otherwise. I made it fix the wording.
+- It ran Prettier without a config, which rewrote quote and semicolon style without asking.
+- It gave a plain utility file a name that read like a React component.
+- When writing the All tasks plan, it said the seed had no archived tasks because it searched for the wrong field name. There are 13.
+- Its date filters started at today, which hid rhythm items that were already done or overdue this week.
+- Its first click on a number column sorted descending, so "sort by Pin" put pinned tasks last.
+- Its first default sort opened the full list on old archived tasks.

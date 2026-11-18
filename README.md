@@ -71,8 +71,13 @@ In priority order. Anything beyond these will be built only if time allowed; see
 5. Alert for tasks that are overdue, due very soon, or past their reminder time
 6. Snooze an alert
 7. "You're caught up" message when today is clear
+8. Pin tasks to the top of the today view
+9. Pagination
+10. Sort
+11. Filter
+12. Search
 
-If time allows: print today's tasks, pin tasks to the top, pagination, sort, filter, search.
+If time allows: print today's tasks.
 
 ## Architecture
 
@@ -160,7 +165,7 @@ All timestamps are stored in UTC and shown in the viewer's local time.
 │   └── seed/                # sample data, the script that dates it, and the loader (load.py)
 └── web/                     # Vite + React app
     └── src/
-        ├── App.tsx          # the scan: Pinned, Today, Tomorrow, Reminders
+        ├── App.tsx          # two tabs: Today (the scan) and All tasks (the full table)
         ├── api/client.ts    # fetch calls to /api
         ├── types.ts
         ├── useNow.ts        # clock that ticks every minute

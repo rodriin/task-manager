@@ -1,29 +1,7 @@
-import { format, isSameDay } from 'date-fns'
-import { isOverdue, isReminderActive, isSnoozed } from '../helpers/taskHelpers'
+import { when } from '../helpers/formatDates'
+import { alertState, isSnoozed } from '../helpers/taskHelpers'
 import type { Task } from '../types'
-
-// 24-hour times: military friendly, and what a flight schedule uses.
-const TIME = 'HH:mm'
-const DAY_TIME = 'EEE d MMM, HH:mm'
-
-/** Show just the time when the date is today, otherwise the day as well. */
-function when(date: Date, now: Date): string {
-  return format(date, isSameDay(date, now) ? TIME : DAY_TIME)
-}
-
-function Tag({
-  children,
-  className,
-}: {
-  children: React.ReactNode
-  className: string
-}) {
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${className}`}>
-      {children}
-    </span>
-  )
-}
+import { Tag } from './Tag'
 
 /**
  * One task. Colour carries the alert state:
@@ -31,8 +9,9 @@ function Tag({
  * Red and amber are kept for alerts only, so the High priority tag is neutral.
  */
 export function TaskRow({ task, now }: { task: Task; now: Date }) {
-  const overdue = isOverdue(task, now)
-  const reminding = !overdue && isReminderActive(task, now)
+  const alert = alertState(task, now)
+  const overdue = alert === 'overdue'
+  const reminding = alert === 'reminder'
   const tone = overdue
     ? 'border-red-600 bg-red-50'
     : reminding
@@ -43,7 +22,7 @@ export function TaskRow({ task, now }: { task: Task; now: Date }) {
     <li className={`flex flex-col gap-1 border-l-4 px-3 py-2 ${tone}`}>
       <div className="flex flex-wrap items-center gap-2">
         {task.pinned && (
-          <span title="Pinned" aria-label="Pinned">
+          <span role="img" title="Pinned" aria-label="Pinned">
             📌
           </span>
         )}

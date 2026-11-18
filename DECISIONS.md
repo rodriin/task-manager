@@ -177,3 +177,29 @@ If time allows: pin, paginate, sort, filter, search, print.
 **Reminders show only once they've fired.** A reminder that hasn't fired yet stays out of the scan, to avoid noise.
 
 **Color means alert state only.** Red is overdue and amber is a reminder that has been triggered. The High tag stays neutral so it can't be mistaken for an alert.
+
+---
+
+## Full task list view
+
+**Pinned tasks are ordinary rows in the full list.** The scan already has a Pinned section, so the table doesn't need to repeat it.
+
+**Status and deadline are separate filters.** Status is how far the task has got; Deadline is when it's due (Overdue, Today, Tomorrow, This week, Later, None). Overdue is a time question, so it goes under Deadline.
+
+**Two filters plus a broad search.** Search also matches category, type and priority. Sorting the Pin and Reminder columns stands in for yes/no filters, which keeps the toolbar to one row.
+
+**10 rows per page.** This keeps the list short enough to scan without scrolling.
+
+**Completed rows are muted green.** Green means done, which is good news. Red and amber still mean only alerts.
+
+**Archived takes precedence over completed in Status.** A task that is both shows as Archived, so the Completed filter shows only finished tasks that haven't been put away.
+
+**First click sorts ascending, and any change goes back to page 1.** This is predictable, and a new order or filter never leaves the user looking at a middle page.
+
+**The table starts unsorted, in the order tasks were entered.** A deadline sort opened on a page of old archived tasks. Clicking a heading sorts; a third click returns to this order.
+
+**This month and This quarter join the Deadline filter.** He thinks in weekly and quarterly rhythms, such as the quarterly currency paperwork. Calendar quarters match the federal fiscal quarters.
+
+**Accessibility is basic but real:** labelled fields, keyboard tabs, sort state for screen readers, a visible focus ring. It's cheap to do while building, and expensive to add later.
+
+**Week, month and quarter filters cover the whole calendar period.** Monday to Sunday, past days included, so the Friday roll-up and the quarterly paperwork show whether they're coming, overdue or done. Later is after this quarter. They originally started at today; that hid rhythm items that were already done or overdue.

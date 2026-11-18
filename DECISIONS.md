@@ -149,3 +149,31 @@ If time allows: pin, paginate, sort, filter, search, print.
 **Time logic lives in the UI.** "Now", snooze times and the reminder shift depend on the viewer's local day. The server stores and checks.
 
 **Rule violations return 422 with the constraint name.** The names match schema.sql. Unknown fields and times without a time zone are rejected too, so a typo fails loudly.
+
+---
+
+## Today and Tomorrow view
+
+**One screen: Today on top, Tomorrow underneath.** His "scan": now and next at a glance. Tabs would hide "next" behind a click.
+
+**A reminder puts a task in the day it fires.** Otherwise reminder-only tasks never show up in the scan.
+
+**Completed tasks are hidden for now.** Today shows only what's left. An empty Today becomes the "You're caught up" message later.
+
+**The screen's clock ticks every minute.** A task turns Overdue the minute its deadline passes, without a reload, so it can't go quiet while the app sits open.
+
+---
+
+## Pinned and reminder sections, due times
+
+**Pinned section above Today, with every pinned task.** Pinned means too important to be out of sight, so a pinned task shows whatever its dates, and only there.
+
+**Active reminders section below Tomorrow.** Today and Tomorrow are now by deadline only. A reached reminder on a task due later, or with no deadline, goes here instead. This replaces "a reminder puts a task in the day it fires".
+
+**Default due time is 20:00, not 17:00.** 20:00 Eastern is 17:00 Pacific, so an East Coast deadline still covers the West Coast workday. It also keeps an evening demo from being all red.
+
+**24-hour clock.** Military friendly; it's how a flight schedule reads.
+
+**Reminders show only once they've fired.** A reminder that hasn't fired yet stays out of the scan, to avoid noise.
+
+**Color means alert state only.** Red is overdue and amber is a reminder that has been triggered. The High tag stays neutral so it can't be mistaken for an alert.

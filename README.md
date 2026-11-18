@@ -151,11 +151,21 @@ All timestamps are stored in UTC and shown in the viewer's local time.
 ├── Dockerfile               # stage 1 builds the UI, stage 2 runs the API
 ├── schema.sql               # reference schema with constraints
 ├── api/
-│   ├── main.py
+│   ├── main.py              # app start-up: tables, seed, routes, then the built UI
+│   ├── db.py                # database connection and session
 │   ├── models.py            # tables; mirror schema.sql, checks included
+│   ├── schemas.py           # JSON shapes for the API (camelCase)
+│   ├── routes.py            # /api/me and /api/tasks (list, create, update)
 │   ├── requirements.txt
 │   └── seed/                # sample data, the script that dates it, and the loader (load.py)
 └── web/                     # Vite + React app
+    └── src/
+        ├── App.tsx          # the scan: Pinned, Today, Tomorrow, Reminders
+        ├── api/client.ts    # fetch calls to /api
+        ├── types.ts
+        ├── useNow.ts        # clock that ticks every minute
+        ├── helpers/         # plain task logic (overdue, reminders, sections) and its tests
+        └── components/      # UI pieces
 ```
 
 ## Local development
@@ -189,6 +199,7 @@ cd web
 npm test        # unit tests
 npm run lint
 npm run build   # type-check and production build
+npm run format  # Prettier: single quotes, no semicolons
 ```
 
 ## Known limits

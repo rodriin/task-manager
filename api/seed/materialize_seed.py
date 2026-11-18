@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 # Local time of day used when the seed only gives a day offset.
 DEFAULT_TIMES = {
-    "deadline": time(17, 0), # 5PM
+    "deadline": time(20, 0), # 8PM Eastern = 5PM Pacific, so a default deadline still covers the West Coast workday
     "remindAt": time(7, 0), # 7AM
     "snoozedUntil": time(7, 0), # 7AM
     "createdAt": time(9, 0), # 9AM
@@ -90,7 +90,7 @@ def materialize_seed(seed, now=None, tz_name=None):
     today, tz = _today(now, tz_name)
     tasks = []
     for t in seed:
-        # Some tasks are due at a set time (the 08:00 brief); the rest fall back to 17:00.
+        # Some tasks are due at a set time (the 08:00 brief); the rest fall back to 20:00.
         deadline_time = (
             time.fromisoformat(t["deadlineTime"]) if t.get("deadlineTime") else DEFAULT_TIMES["deadline"]
         )

@@ -22,7 +22,7 @@ The design decisions and the reasoning behind them are in `DECISIONS.md`.
 - `DECISIONS.md` is a running log kept *during* the build, not reconstructed at the end. Reviewers read it first. When a real choice gets made (something considered, chosen and why), add an entry under a new `##` section at the bottom (bold lead-in, then a few plain sentences, matching the existing entries), or suggest the entry so the author can write it. Don't backfill or polish earlier entries.
 - `README.md` must keep the one command to run the app.
 
-The repo is at the scaffold stage. `api/main.py` only has a health route, and `web/src/App.tsx` is a placeholder.
+Progress is tracked in `PLAN.md` (parts of planned work, not strict commits); keep it accurate as work changes. Built so far: the models and seed, the JSON API (`/api/me`, `/api/tasks` list/create/update), and the read-only scan screen.
 
 ## Commands
 
@@ -43,7 +43,7 @@ npx vitest run src/path/to.test.ts # single file
 npx vitest run -t "name"           # single test by name
 npm run lint                       # oxlint (not ESLint)
 npm run build                      # tsc -b + vite build; this is the type-check
-npm run format                     # prettier on src
+npm run format                     # prettier on src (single quotes, no semicolons: web/.prettierrc.json; web only)
 ```
 
 There are no API tests. That was deliberate: UI tests target derived status and date logic.
@@ -53,8 +53,9 @@ There are no API tests. That was deliberate: UI tests target derived status and 
 - **Two containers.** `db` (Postgres 17) and `app`. The Dockerfile builds the React app in stage 1 and copies `web/dist` into `api/static`. FastAPI mounts that at `/` after all routes. All API routes must live under `/api/*` and be registered **before** the static mount at the bottom of `main.py`. There is no CORS and no proxy in production. In dev, Vite proxies `/api`.
 - **No migration tool.** `SQLModel.metadata.create_all` runs in the FastAPI lifespan. Table classes must be imported before it runs.
 - **`schema.sql` is the reference schema, not what runs.** `create_all` won't create its CHECK constraints or partial index unless the SQLModel models declare them (for example with `__table_args__`). Keep the models and `schema.sql` in sync. The database uses snake_case columns, and the JSON API uses camelCase (`remindAt`, `ownerId`, `snoozedUntil`, ...).
-- **Seeding.** On startup, if `tasks` is empty, insert `api/seed/users.seed.json`, then `tasks.seed.json`, via `api/seed/materialize_seed.py`. The seed stores *day offsets*, not dates. They're resolved against "today" in `DEMO_TZ` (default `America/New_York`), because the container clock is UTC. Never put fixed dates in the seed. The seed must also pass the schema checks.
+- **Seeding.** On startup, if `tasks` is empty, insert `api/seed/users.seed.json`, then `tasks.seed.json`, via `api/seed/materialize_seed.py`. The seed stores *day offsets*, not dates. They're resolved against "today" in `DEMO_TZ` (default `America/New_York`), because the container clock is UTC. Never put fixed dates in the seed. The seed must also pass the schema checks. Default local times when the seed gives only a day: deadline 20:00 (Eastern 20:00 = Pacific 17:00, and an evening demo isn't all red), reminder and snooze 07:00. Changing the seed needs `docker compose down -v` to re-seed.
 - **Frontend.** React 19 + TypeScript + Vite, TanStack Query for server state, TanStack Table **v9** for sorting, filtering, search and pagination (all "if time allows" items). Table v9's API differs from most v8 examples. Styling is Tailwind v4 (Vite plugin) and dates use date-fns. The plan says no router, no state store and no form library: use `useState` for the active tab (Today / All) and the open task. The client loads all tasks, archived ones included, in one request.
+- **Web code layout.** `src/api/client.ts` holds the fetch calls (ISO strings become `Date`s only here); `src/types.ts` at the top; `src/useNow.ts` (clock hook) at the top too; `src/helpers/` holds plain functions with no React, and their tests (`taskHelpers.ts`, `taskHelpers.test.ts`); `src/components/` holds the UI pieces (`TaskSection`, `TaskRow`). Keep things that are used together, together.
 - **Single user.** There's no auth. The API acts as the one seeded user (id 1). Display name is `preferredName` if set, otherwise first + last name.
 
 ## Domain rules (easy to get wrong)
@@ -62,7 +63,10 @@ There are no API tests. That was deliberate: UI tests target derived status and 
 - **Completed and Overdue are derived, never stored.** Completed means `completedAt` is set. Overdue means the deadline has passed and the task isn't completed. Stored `status` is only `Not Started` | `In-Progress`. Un-completing a task restores its prior status.
 - **Timestamps are UTC in storage, shown in local time.** "Today" and "Tomorrow" are the *viewer's* local day, computed in the UI. A task is overdue the minute its deadline passes.
 - **Alerts are in-app only; nothing buzzes.** A task alerts when its deadline is within the next 24 hours, its deadline has already passed (overdue), or its `remindAt` has been reached. It keeps alerting until it's completed, archived or snoozed. An overdue task must never go quiet by itself: that's the missed sign-off.
-- **Today's default order:** overdue first, then pinned tasks (if pinning ships), then everything else by deadline, earliest first. Within each group, sort by deadline too. Overdue tasks appear in Today even though their deadline was before today. The order is a guess to check with Maverick.
+- **The scan (opening screen), top to bottom:** **Pinned** (every open pinned task, whatever its dates), **Today** (deadline before the end of today, overdue included), **Tomorrow** (deadline tomorrow), **Reminders** (reminder already reached, and none of the above: deadline later or none). Only open tasks; each task appears in one section only, the first it qualifies for. A reminder that hasn't fired yet shows nowhere in the scan. Pinned and Reminders hide when empty. Logic lives in `web/src/helpers/taskHelpers.ts` (`buildScan`).
+- **Order:** Pinned and Today put overdue first, then by deadline; Tomorrow by deadline; Reminders oldest reminder first; no deadline sorts last. The order is a guess to check with Maverick.
+- **Colour means alert state:** red = overdue, amber = reminder reached and not overdue. Don't use red or amber for anything else (the High tag is neutral).
+- **Times are 24-hour** (`HH:mm`), with the day added when it isn't today.
 - **Snooze** writes only `snoozedUntil` (counted from now). It never changes `remindAt`. A snoozed task stays visible, with a "snoozed until" marker. The snooze options are "3 hours" and "tomorrow morning" (both guesses to check with Maverick).
 - **Moving a deadline before its reminder** shifts `remindAt` by the same amount, and the form shows the new time before saving. Don't reject the edit and don't clear the reminder.
 - **Archiving** happens in the task edit form, by setting `archivedAt`; there is no separate archive action. Archived tasks **stay in the full list**, marked as archived, until filters exist to hide them. They never appear in Today and Tomorrow and never alert. The same save that archives a task must also set `pinned = false` and `snoozedUntil = null`, or the DB checks reject it. Un-archiving clears `archivedAt`.

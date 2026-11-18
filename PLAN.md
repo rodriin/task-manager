@@ -5,8 +5,9 @@ Working plan for the build, split into parts. A part is a unit of planned work, 
 | Part | Scope | Status |
 | --- | --- | --- |
 | 1 | Data seed: models and seed loader | Done |
-| 2 | API routes: list, create, update | Built and verified, ready to commit |
-| 3+ | Not planned yet | — |
+| 2 | API routes: list, create, update | Done |
+| 3 | UI: the scan (Pinned, Today, Tomorrow, Reminders), read-only | Done |
+| 4+ | Not planned yet | — |
 
 ---
 
@@ -168,3 +169,66 @@ There are no API tests, by design. Check with curl or the interactive docs at <h
 - [x] `PATCH` with `title: null` returns 422 (title, status, priority and pinned can't be cleared).
 
 Verified 2026-11-17, then re-seeded with `down -v` so the demo data is clean.
+
+---
+
+## Part 3: The scan (Today and Tomorrow view)
+
+**Goal:** the app opens on one screen that answers "what's now and what's next", built from the real API data. Read-only for this part. Sections, top to bottom: **Pinned**, **Today**, **Tomorrow**, **Reminders**.
+
+**Out of scope:** the full task list (All tab), task detail and edit, clone, alert banner, snooze actions, "You're caught up" message. Those are later parts.
+
+### Rules
+
+All dates are the viewer's local day, worked out in the browser. "Open" means not completed and not archived. Only open tasks appear. Each task lands in the first section it qualifies for, so it appears once.
+
+1. **Pinned:** every pinned task, whatever its dates. Hidden when there are none.
+2. **Today:** deadline before the end of today, overdue included.
+3. **Tomorrow:** deadline tomorrow.
+4. **Reminders:** only reminders that have already fired, on tasks in none of the above (deadline later, or no deadline). A reminder that hasn't fired yet shows nowhere, to avoid noise. Hidden when there are none.
+
+Tasks that fit none (due later, reminder not reached yet) wait for the full list.
+
+- **Overdue** = deadline has passed and the task is not completed. Derived, never stored. It flips the minute the deadline passes: the screen's clock ticks once a minute, no reload needed.
+- **Order:** Pinned and Today put overdue first, then by deadline; Tomorrow by deadline; Reminders oldest reminder first. No deadline sorts last.
+- **Colour = alert state:** red for overdue, amber for a reached reminder that isn't overdue, plain otherwise. The High priority tag is neutral so it isn't mistaken for an alert.
+- **Each row shows:** title, pin marker, High tag, "In progress" tag; then the due time (or "Overdue · was due …"), the reminder time, category, and "Snoozed until …" while a snooze runs. Snoozed tasks stay visible.
+- **Times** are 24-hour (`HH:mm`), with the day added when it isn't today.
+- **Seed:** the default due time is 20:00 local (was 17:00), in `api/seed/materialize_seed.py`. Needs `docker compose down -v` to re-seed.
+
+### 3.1 Data: `web/src/api/client.ts`, `web/src/types.ts`
+
+- `Task` and `User` types matching the API's camelCase JSON. Timestamps arrive as ISO strings and are turned into `Date` objects in one place.
+- `fetchTasks()` and `fetchMe()` with plain `fetch` on `/api/...`. A non-OK response throws, so the screen can show an error.
+- TanStack Query: a `QueryClientProvider` in `main.tsx`; `useQuery` for tasks and for the user.
+
+### 3.2 Task helpers: `web/src/helpers/` (`taskHelpers.ts`, `taskHelpers.test.ts`)
+
+Plain functions with no React, so they can be tested with a fixed "now":
+
+- `isOpen`, `isOverdue`, `isReminderActive`, `isSnoozed`.
+- `buildScan(tasks, now)` returns `{ pinned, today, tomorrow, reminders }`, filtered and sorted per the rules above.
+
+Tests cover: overdue flips at the deadline; a reminder turns on at its time; pinned wins whatever the dates; the Today/Tomorrow split at local midnight; overdue from earlier days in Today; a reached reminder stays in Today or Tomorrow when the deadline is there, otherwise goes to Reminders; unreached reminders show nowhere; completed and archived never show; snoozed still show; a task is never in two sections; the order of each section.
+
+### 3.3 Screen: `web/src/App.tsx`, `web/src/components/` (`TaskSection.tsx`, `TaskRow.tsx`)
+
+`helpers/` holds plain functions (no React) and their tests; `components/` holds the UI pieces; `useNow.ts` (the clock hook) sits at the top of `src/` next to `App.tsx`, which uses it.
+
+- `useNow()` hook: the current time, updated every 60 seconds.
+- `App`: header with the user's display name and the date and time, then the four sections. Simple loading and error text.
+- `TaskSection`: heading with the date (Today, Tomorrow) and the count as "(3 Tasks)", then the rows, or "Nothing due"; Pinned and Reminders hide when empty.
+- `TaskRow`: one task, coloured by alert state.
+- Prettier: single quotes, no semicolons (`web/.prettierrc.json`, applies to `web/` only).
+
+### 3.4 Verify
+
+- [x] `npm test` (14 tests), `npm run lint` and `npm run build` pass (from `web/`).
+- [x] Seed with 20:00 deadlines passes every schema rule, including on both DST change days.
+- [x] `docker compose down -v`, `docker compose up --build`, open <http://localhost:8000>: header says Maverick; Pinned 3, Today 9, Tomorrow 3, Reminders 1.
+- [x] Pinned shows all three pinned tasks, including the two not due today.
+- [x] Overdue rows are red; the reached reminders (machine shop, night currency flight, nose wheel tire) are amber.
+- [x] No archived or completed task appears; the two snoozed tasks show "Snoozed until …".
+- [x] Local dev: `npm run dev` serves the page and the `/api` proxy reaches the API.
+
+Verified 2026-11-17 at 18:28 New York time, rendered in headless Chrome.

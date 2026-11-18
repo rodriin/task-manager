@@ -4,7 +4,7 @@ import {
   STATUS_FILTERS,
   type DeadlineFilter,
   type StatusFilter,
-} from '../helpers/taskHelpers'
+} from '../../helpers/taskHelpers'
 
 interface Props {
   search: string
@@ -57,7 +57,7 @@ export function TaskTableToolbar({
         placeholder="Search title, description, category, type, priority..."
         value={search}
         onChange={(e) => onSearch(e.target.value)}
-        className={`${fieldStyle} min-w-110 grow`}
+        className={`${fieldStyle} w-full grow sm:w-auto sm:min-w-110`}
       />
       <div className="flex items-center gap-1 text-sm text-gray-600">
         <label htmlFor={`${id}-status`}>Status</label>

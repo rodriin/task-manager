@@ -1,5 +1,5 @@
-import { TaskRow } from './TaskRow'
-import type { Task } from '../types'
+import { TaskLine } from './TaskLine'
+import type { Task } from '../../types'
 
 interface Props {
   title: string
@@ -8,6 +8,7 @@ interface Props {
   now: Date
   /** Hide the whole section when it has no tasks (Pinned, Reminders). */
   hideWhenEmpty?: boolean
+  onOpen: (id: number) => void
 }
 
 /** One block of the scan: a heading with a count, then the tasks, or "Nothing due". */
@@ -17,6 +18,7 @@ export function TaskSection({
   tasks,
   now,
   hideWhenEmpty = false,
+  onOpen,
 }: Props) {
   if (hideWhenEmpty && tasks.length === 0) return null
   return (
@@ -33,7 +35,7 @@ export function TaskSection({
       ) : (
         <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white">
           {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} now={now} />
+            <TaskLine key={task.id} task={task} now={now} onOpen={onOpen} />
           ))}
         </ul>
       )}

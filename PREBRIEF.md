@@ -121,7 +121,8 @@ Assumptions and open questions:
 - **Filters:** are Status and Deadline enough, or do you want dropdowns for category, priority, pinned or "has a reminder"?
 - **Week and quarter:** does your week start on Monday? Do calendar quarters match how you think about quarterly paperwork? They line up with the federal fiscal quarters.
 - **Rows per page:** is 10 the right amount to have by default?
-
+- **Is it fine that there's no "discard changes?"** prompt when closing an edited task?
+- **Are Complete and Archive as checkboxes in the edit form enough,** or do you want one-click buttons on the rows?
 
 ## Where AI tooling helped, and where I overrode it
 
@@ -148,7 +149,6 @@ I overrode or corrected AI:
 - It had a database rule that completion must come after creation. I questioned it, and it was removed so past work could be logged.
 - The Personal category, renaming Managerial to Admin, the preferred name field and making Completed a calculated value were my calls.
 - It first advised against using TanStack Table and to use a migration tool, then reversed both when I pushed on timeline and on what I planned to build next.
-- I decided archived tasks stay in the full list, with archiving done as a normal edit, rather than building a filter now.
 - The scan layout was my call:
   - a Pinned section above Today
   - a Reminders section below Tomorrow
@@ -158,9 +158,10 @@ I overrode or corrected AI:
 - It ran Prettier with its default style and I asked it to revert those changes and add settings to use single quotes and less semicolons.
 - I rejected its folder names three times: lib/, views/ (a file named TaskView sounded like a React view), and API calls split into three files. I chose helpers/, components/ and a single api/client.ts.
 - It made This week, This month and This quarter start at today. I made them whole calendar periods (Monday to Sunday, past days included), so the weekly roll-up and quarterly paperwork show whether they're coming, overdue or done. It had "Later" as after this week; I made it after this quarter.
-- It suggested defaulting the Status filter to Open. I chose no default sort instead, so tasks appear in the order they were entered without any missing data.
+- It suggested defaulting the Status filter to Open. I chose not to do that so there is no missing data.
 - I decided to have pinned tasks as ordinary rows in the full list, since the scan already has a Pinned section. This also made it possible to have a sortable Pin column.
-- I decided archived tasks stay in the full list because nothing should be missing and the Status filter can hide them.
+- I decided archived tasks stay in the full list, with archiving done as a normal edit, so nothing would be missing from the full table data and the Status filter can hide archived tasks as needed.
+- It proposed moving the reminder to 07:00 on the deadline's day, or to the deadline itself if earlier. I chose the day before the deadline at the reminder's original time: one rule, and at least a day to act.
 
 AI was wrong or inconsistent:
 
@@ -168,9 +169,9 @@ AI was wrong or inconsistent:
 - Its sample data had a task snoozed until the same moment its reminder fired; the new database check caught it.
 - Military details in the sample data are plausible but generic. I reviewed them by hand and updated them to the best of my knowledge.
 - I asked whether a reminder required a deadline. The schema already allowed a reminder on its own, but the AI's own summary in CLAUDE.md was worded ambiguously enough to suggest otherwise. I made it fix the wording.
-- It ran Prettier without a config, which rewrote quote and semicolon style without asking.
 - It gave a plain utility file a name that read like a React component.
 - When writing the All tasks plan, it said the seed had no archived tasks because it searched for the wrong field name. There are 13.
 - Its date filters started at today, which hid rhythm items that were already done or overdue this week.
 - Its first click on a number column sorted descending, so "sort by Pin" put pinned tasks last.
 - Its first default sort opened the full list on old archived tasks.
+- It wanted to block Save when a first deadline is added before an existing reminder. That breaks the intent that moving a deadline should never reject the edit when the reminder can be easily recalculated.

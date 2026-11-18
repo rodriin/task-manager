@@ -7,8 +7,9 @@ Working plan for the build, split into parts. A part is a unit of planned work, 
 | 1 | Data seed: models and seed loader | Done |
 | 2 | API routes: list, create, update | Done |
 | 3 | UI: the scan (Pinned, Today, Tomorrow, Reminders), read-only | Done |
-| 4 | UI: All tasks tab, a full table with search, filters, sort and pages | Built and verified, ready to commit |
-| 5+ | Not planned yet | — |
+| 4 | UI: All tasks tab, a full table with search, filters, sort and pages | Done |
+| 5 | UI: task detail and edit, in a dialog | Built and verified, ready to commit |
+| 6+ | Not planned yet | — |
 
 ---
 
@@ -334,3 +335,125 @@ One toolbar row above the table, wrapping on narrow screens:
 - [x] Keyboard only: Tab lands on the selected tab, ArrowRight selects All tasks, the next Tab reaches the search box with a visible focus ring. Each label points at its field.
 
 Verified 2026-11-17 at 23:32 and 2026-11-18 at 07:07 New York time, driven in headless Chrome.
+
+---
+
+## Part 5: Task detail and edit
+
+**Goal:** click a task's title, in the scan or the table, and a dialog opens with everything about it. Every field can be changed there, including completing and archiving, and one Save sends it. This is item 3 of the priority list, and the first time the UI writes.
+
+**Out of scope:** New task and Clone (next part; the form is built so both can reuse it), snooze buttons (snooze is an action with preset times, not a form field; the dialog only shows "Snoozed until …"), the alert banner, the "caught up" message, pin from a row, an activity history.
+
+### Rules
+
+- **One dialog, opens on the form.** No separate read-only view and no Edit button: the fields show the task, and changing one is the edit. Derived facts sit above the fields as plain text: the alert state (red "Overdue" / amber "Reminder"), "Snoozed until …", Created, Completed and Archived dates.
+- **Opened from the title.** In `TaskLine` (the scan) and the table's Title cell, the title becomes a `<button>` styled as text. Not a click on the whole row: a button is reachable by keyboard and announced by screen readers.
+- **Native `<dialog>` with `showModal()`.** The browser gives the focus trap, Escape to close, the backdrop, and makes the page behind inert. Focus starts on the title field and returns to the title button on close.
+- **Which task:** `App` keeps `openTaskId` in `useState` and finds the task in the `tasks` query data. The form copies the task once when it opens (`key={task.id}`), so a background refetch doesn't wipe what's being typed.
+- **Fields:**
+
+  | Field | Input | Notes |
+  | --- | --- | --- |
+  | Title | text, required, up to 120 | trimmed |
+  | Description | textarea, up to 5000 | empty saves as null |
+  | Status | select: Not started, In progress | the stored status; kept when completed |
+  | Priority | select: Low, Medium, High | |
+  | Category | select: none, Admin, Supply, Flight, Personal | none = null |
+  | Type | select: none, Follow-up, Reminder, Sign-off, Recurring | none = null |
+  | Deadline | date picker + time `HH:mm` + Clear | time defaults to 20:00 when a date is picked |
+  | Reminder | date picker + time `HH:mm` + Clear | time defaults to 07:00 |
+  | Pinned | checkbox | disabled while Archived is ticked |
+  | Completed | checkbox | ticking sets `completedAt` to now; unticking clears it |
+  | Archived | checkbox | ticking sets `archivedAt` to now, unticks Pinned and locks every other field |
+
+- **24-hour times:** the time is a text field (`HH:mm`, `inputMode="numeric"`), because the browser's own time picker shows AM/PM on a US machine. The date uses the native date picker. Date plus time are read as local time and sent as UTC.
+- **Moving the deadline before the reminder** shifts the reminder by the same amount, and the form shows "Reminder moves to …" under the field before saving.
+- **Adding a first deadline before an existing reminder** (no old deadline, so no amount to shift by) moves the reminder to the day before the deadline, at the reminder's original time, so there's at least a day to act. Same "Reminder moves to …" note. If that time has already passed, the reminder is simply reached (amber) once saved.
+- **Typing a reminder after the deadline** is the only case that's an error: the form says "The reminder can't be after the deadline" and Save is disabled. The shift only applies when the deadline changed and the reminder field wasn't edited; a reminder he typed himself is never moved for him.
+- **Archived locks the form.** Archiving is a soft delete, so an archived task isn't edited by accident. Whenever Archived is ticked, every other field is disabled (one `<fieldset disabled>` around them), and a line above says "Archived on 3 Nov. Untick Archived to edit."
+  - **Opening an archived task:** everything is locked. Unticking Archived unlocks the fields; the edits and `archivedAt: null` go in one save.
+  - **Re-ticking Archived on an archived task** puts every field back to its stored value, visibly, and locks them. Edits made while it was unticked are dropped, so the save changes nothing.
+  - **Archiving an open task keeps the edits** made before ticking, and saves them with the archive in one step (wrap up the title, then archive). Pinned unticks, matching the server; unticking Archived again restores Pinned to what it was.
+  - **Unarchiving can bring an alert straight back:** a task whose deadline has passed is red as soon as it's restored. Correct, since overdue never goes quiet.
+  - **Completed tasks are not locked.** Completing is reversible, and fixing a typo or a date on finished work is reasonable.
+- **Changing the deadline or the reminder ends a running snooze**, in the same save (`snoozedUntil: null`). A stored snooze that has already run out is cleared too: the database still checks it against the reminder. The form says "Snooze ends: the dates changed" before saving. He has re-planned the task, so the alerts follow the new dates. This also covers the edits the database would otherwise reject on a snoozed task: clearing both dates, or moving the reminder past the snooze time.
+- **Save sends only what changed** (a PATCH with the changed fields). Nothing changed: Save is disabled. The server already clears pin and snooze on archive, and snooze on complete.
+- **After saving:** the returned task replaces the old one in the query cache (no refetch), and the dialog closes. The scan and the table update straight away: completing a task drops it from Today, archiving drops it from the scan.
+- **When the save fails:** the dialog stays open with the typed values, and a message in plain words. A 422 with a constraint name maps to a sentence (`remind_not_after_deadline` → "The reminder can't be after the deadline."); anything else shows the API's message. The message is a live region.
+- **Cancel, Escape or the backdrop** close without saving. No "discard changes?" prompt in the first cut.
+
+### Layout
+
+```
+┌ Edit task ─────────────────────────────────────── ✕ ┐
+│ Overdue · was due Mon 16 Nov 20:00   Created 2 Nov  │
+│                                                     │
+│ Title        [ Tow bar inspection               ]   │
+│ Description  [                                  ]   │
+│ Status [In progress ▾]  Priority [High ▾]           │
+│ Category [Supply ▾]     Type [Sign-off ▾]           │
+│ Deadline [ 2026-11-16 ] [20:00] Clear               │
+│ Reminder [ 2026-11-16 ] [07:00] Clear               │
+│   Reminder moves to Sun 15 Nov 07:00                │
+│ [ ] Pinned   [ ] Completed   [ ] Archived           │
+│                                                     │
+│                              [Cancel]  [Save]       │
+└─────────────────────────────────────────────────────┘
+```
+
+On a phone the fields stack in one column.
+
+### 5.1 API: `web/src/api/client.ts`
+
+- `updateTask(id, patch)`: `PATCH /api/tasks/{id}` with JSON; `Date` values become ISO strings, `null` stays `null`. Returns the parsed task (`parseTask`).
+- An `ApiError` carrying the status and the `detail`, so the form can map constraint names to messages.
+
+### 5.2 Form helpers: `web/src/helpers/taskForm.ts` (+ `taskForm.test.ts`)
+
+Plain functions, no React:
+
+- `toFormValues(task)` and `FormValues` (strings and booleans, what the inputs hold).
+- `parseLocal(date, time)`: `Date` or null; rejects a time that isn't `HH:mm`.
+- `shiftReminder(oldDeadline, newDeadline, remindAt)`: the reminder to save and whether it moved. Shifts by the same amount when there was an old deadline; with none, the day before the new deadline at the reminder's own time.
+- `toPatch(task, values, now)`: only the changed fields, with Completed and Archived turned into timestamps (or null), `pinned: false` when archiving; for a task that is stored as archived and still ticked, an empty patch whatever else the form holds; and `snoozedUntil: null` when the task has any `snoozedUntil` (running or expired) and the deadline or reminder changed.
+- `formErrors(values)`: title empty or too long, bad time, reminder after deadline.
+- `constraintMessage(name)`: plain sentences for the `schema.sql` constraint names.
+
+Tests: shift by the same amount across midnight and a DST change; no shift when the reminder is still before the deadline; first deadline before a reminder moves it to the day before, same time of day (including across a DST change); a hand-typed reminder after the deadline is an error, not shifted; untouched form → empty patch; clearing a field sends null; completing and un-completing; archiving unpins; archiving an open task keeps the other edits; an archived task re-ticked after edits gives an empty patch; unarchiving plus edits is one patch with `archivedAt: null`; changing the deadline or reminder of a snoozed task clears the snooze (an expired one too), other edits (title, status) leave it; bad times rejected; default times 20:00 and 07:00.
+
+### 5.3 Dialog: `web/src/components/dialog/` (`TaskDialog.tsx` + `TaskDialog.test.tsx`)
+
+- The `<dialog>` and the form; `useMutation` calling `updateTask`, then `setQueryData(['tasks'], …)` and close.
+- Its parts in their own files: `TaskFacts`, `DateTimeField`, `Select`, `Checkbox`, `FieldError`, and `styles.ts` (Save is the blue primary button; Clear looks like the table toolbar's Clear).
+- Every input has a `<label htmlFor>`; the date and time pair sit in a `fieldset` with a `legend`.
+- jsdom doesn't implement `showModal`, so `test-setup.ts` gets a small stub if it's missing.
+- Tests: opens with the task's values; editing the title sends only `{ title }`; moving the deadline shows the reminder note and sends both; a 422 shows the message and keeps the dialog open; Cancel sends nothing; an archived task opens with every field but Archived disabled and the "Untick Archived to edit" line; re-ticking Archived restores the stored values; ticking Archived on an open task disables the fields but keeps the typed title.
+
+### 5.4 Opening it: `TaskLine.tsx`, `TaskSection.tsx`, `TaskTable.tsx`, `App.tsx`
+
+- An `onOpen(id)` prop down to `TaskLine` and the table's Title cell; the title renders as a button (`shared/TitleButton.tsx`, shared by both).
+- Components grouped in folders: `scan/` (`TaskSection`, `TaskLine`), `table/` (`TaskTable`, `TaskTableToolbar`), `dialog/`, `shared/` (`Tag`, `TitleButton`). `TaskRow` (Part 3) is renamed `TaskLine`: it is one task in a scan section, and the old name read like a table row.
+- `App` holds `openTaskId` and renders `TaskDialog` when it's set and the task exists.
+- Existing `TaskTable` tests keep passing (title text is still found).
+
+### 5.5 Verify
+
+- [x] `npm test` (65 tests), `npm run lint`, `npm run build` pass.
+- [x] Click a title in Today: the dialog opens with focus on Title; Escape closes it and focus is back on that title.
+- [x] Same from the All tasks table; the table's search, sort and page are unchanged after closing.
+- [x] Change a title and save: the row updates without a reload; the network tab shows a PATCH with only `title`.
+- [x] Tick Completed on a Today task: it leaves Today, shows as Completed (green) in the table; untick it and it comes back with its old status.
+- [x] Tick Archived on a pinned task: Pinned unticks and the fields lock; after saving it's gone from the scan and Archived in the table.
+- [x] Open task: change the title, tick Archived, save: one save, archived with the new title.
+- [x] Open an archived task: only Archived can be changed. Untick it, edit the title, re-tick: the old title is back and Save is disabled. Untick, edit, save: unarchived with the new title.
+- [x] Unarchive a task whose deadline has passed: it's red in Today straight away.
+- [x] Move a deadline earlier than its reminder: "Reminder moves to …" shows; after saving both are moved by the same amount.
+- [x] Add a deadline before its reminder on a task with a reminder and no deadline (the helmet visor): "Reminder moves to …" shows the day before the deadline, at the reminder's original time.
+- [x] Set a reminder after the deadline by hand: the error shows and Save is disabled.
+- [x] On a snoozed task, change the deadline: "Snooze ends: the dates changed" shows; after saving the "Snoozed until" marker is gone and the alert is back if the new dates call for one.
+- [x] On a snoozed task, clear both the deadline and the reminder: it saves (no constraint error) and the snooze is gone.
+- [x] Times show and are typed as 24-hour.
+- [x] Keyboard: Enter on a title opens, Escape closes and focus returns, the time field is typed and normalised ("730" → 07:30). Phone width (390px): the form is one column and fits. Also fixed here: the All tasks search box had `min-w-110`, which made the page scroll sideways on a phone; it's now full width below 640px and keeps that minimum above (checked at 390, 640 and 1280px).
+- [x] `docker compose up --build` serves it at <http://localhost:8000>; then `docker compose down -v` to re-seed clean demo data.
+
+Verified 2026-11-18 at 10:48 New York time, driven in headless Chrome against `docker compose up --build`, then re-seeded with `down -v`.

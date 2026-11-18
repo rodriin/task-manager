@@ -16,7 +16,7 @@ import {
   useTable,
   type SortFn,
 } from '@tanstack/react-table'
-import { day, when } from '../helpers/formatDates'
+import { day, when } from '../../helpers/formatDates'
 import {
   alertState,
   matchesDeadline,
@@ -26,9 +26,10 @@ import {
   type DeadlineFilter,
   type StatusFilter,
   type TaskStatus,
-} from '../helpers/taskHelpers'
-import type { Task } from '../types'
-import { Tag } from './Tag'
+} from '../../helpers/taskHelpers'
+import type { Task } from '../../types'
+import { Tag } from '../shared/Tag'
+import { TitleButton } from '../shared/TitleButton'
 import { TaskTableToolbar } from './TaskTableToolbar'
 
 // Which table features are switched on. Defined once, outside the component, as v9 asks.
@@ -65,7 +66,7 @@ const time = (date: Date | null) => date?.getTime()
  * The columns. They depend on `now` (overdue, "today"), so they are rebuilt when the clock ticks.
  * Each accessor returns the value the column sorts by; `cell` decides what is shown.
  */
-function makeColumns(now: Date) {
+function makeColumns(now: Date, onOpen: (id: number) => void) {
   const dateColumn = (id: string, header: string) => ({
     id,
     header,
@@ -88,7 +89,7 @@ function makeColumns(now: Date) {
     helper.accessor('title', {
       header: 'Title',
       sortFn: 'text',
-      cell: ({ getValue }) => <span className="font-medium">{getValue()}</span>,
+      cell: ({ row }) => <TitleButton task={row.original} onOpen={onOpen} />,
     }),
     helper.accessor((t) => STATUS_RANK[taskStatus(t)], {
       id: 'status',
@@ -189,8 +190,17 @@ function rowTone(task: Task, now: Date): string {
 
 const SORT_ARROW = { asc: ' ▲', desc: ' ▼' }
 
-export function TaskTable({ tasks, now }: { tasks: Task[]; now: Date }) {
-  const columns = useMemo(() => makeColumns(now), [now])
+export function TaskTable({
+  tasks,
+  now,
+  onOpen,
+}: {
+  tasks: Task[]
+  now: Date
+  /** Opens the task's detail and edit dialog. */
+  onOpen: (id: number) => void
+}) {
+  const columns = useMemo(() => makeColumns(now, onOpen), [now, onOpen])
 
   const table = useTable({
     features,

@@ -203,3 +203,35 @@ If time allows: pin, paginate, sort, filter, search, print.
 **Accessibility is basic but real:** labelled fields, keyboard tabs, sort state for screen readers, a visible focus ring. It's cheap to do while building, and expensive to add later.
 
 **Week, month and quarter filters cover the whole calendar period.** Monday to Sunday, past days included, so the Friday roll-up and the quarterly paperwork show whether they're coming, overdue or done. Later is after this quarter. They originally started at today; that hid rhythm items that were already done or overdue.
+
+---
+
+## Task detail and edit
+
+**One dialog for detail and edit, opening on the form.** A read-only view with an Edit button is one more click and one more screen to build. The form already shows every field, and the derived facts (overdue, created, completed) sit above it as text.
+
+**A dialog, not a page.** No router, and closing it puts him back exactly where he was in the scan or the table. Used the browser's native `<dialog>`, which handles focus, Escape and the backdrop without a library.
+
+**Complete and archive are checkboxes in the same form.** One Save, one PATCH, one path to test. Quick-action buttons on the rows can come later if the demo shows he wants them.
+
+**24-hour time is typed, not picked.** The browser's time picker shows AM/PM on a US machine, which breaks the 24-hour rule. The date keeps the native picker. Picking a date fills in 20:00 for a deadline and 07:00 for a reminder, the same defaults as the seed.
+
+**Save sends only the fields that changed.** A smaller request, and it can't overwrite a field the form didn't touch.
+
+**Database rule errors are shown in plain words.** The API returns the constraint name; the form turns it into a sentence and keeps what was typed.
+
+**No optimistic updates.** The scan and the table change only after the database has accepted the save. A failed save leaves them showing what is really stored, and the dialog stays open with the edit. Optimistic updates make the screen change instantly, but a failure would flip the task back after the dialog had closed: a change that looks saved and quietly isn't. With one user and a local database, waiting for the server costs almost nothing.
+
+**No "discard changes?" prompt yet.** Cancel and Escape just close. A guess to check with him.
+
+**Adding a first deadline before an existing reminder moves the reminder.** With no old deadline there's no amount to shift by. The initial plan blocked the save, but that rejects a deliberate edit, which is what the shift rule exists to avoid. The reminder moves to the day before the deadline, keeping the time it was set for, and the form shows the new time before saving. One rule with no special cases, and the reminder stays useful: it gives at least a day to act on the task, rather than firing just before it is due. Only a reminder typed in after the deadline himself is an error.
+
+**Snooze is not a field in the edit form.** Snooze is a response to an alert in the app, so it's an action with preset times counted from now (3 hours, tomorrow morning), coming with the snooze part. A free date field would make it one click to quiet an overdue sign-off for a month, which is the silence that is dangerous. The dialog shows "Snoozed until …" as text only.
+
+**Changing the deadline or reminder ends a running snooze.** Editing either one clears the snooze in the same save, and the form says so before saving. When the task has been re-planned, the alerts should follow the new dates, and if they still call for an alert it comes back. It's one rule, the same way completing and archiving already clear a snooze. It also avoids the database rejecting a sensible edit (clearing both dates, or moving the reminder past the snooze). An expired snooze is cleared too, since the database still checks the stored time against the reminder.
+
+**Archived tasks are locked in the dialog.** Archiving is a soft delete, so an archived task shouldn't be easy to change by accident. Every field except Archived is disabled until archived is unticked, with a line saying so. Unticking and editing is still one save. Re-ticking Archived on an archived task puts the fields back to what is stored, visibly, so nothing changes automatically on an already soft-deleted task.
+
+**Archiving an open task keeps the other edits.** Wrapping up a task often means fixing the title and then putting it away, and that should be one step, not two. Ticking Archived still locks the fields and unticks Pinned, the same as the server, so the checkbox always behaves the same way.
+
+**Completed tasks stay editable.** Completing is reversible, and correcting finished work is normal. Only archived tasks lock.

@@ -1,14 +1,24 @@
-import { when } from '../helpers/formatDates'
-import { alertState, isSnoozed } from '../helpers/taskHelpers'
-import type { Task } from '../types'
-import { Tag } from './Tag'
+import { when } from '../../helpers/formatDates'
+import { alertState, isSnoozed } from '../../helpers/taskHelpers'
+import type { Task } from '../../types'
+import { Tag } from '../shared/Tag'
+import { TitleButton } from '../shared/TitleButton'
 
 /**
- * One task. Colour carries the alert state:
+ * One task in a section of the scan (a line in a list). Color carries the alert state:
  * red = overdue; amber = reminder reached (and not overdue); otherwise plain.
  * Red and amber are kept for alerts only, so the High priority tag is neutral.
  */
-export function TaskRow({ task, now }: { task: Task; now: Date }) {
+export function TaskLine({
+  task,
+  now,
+  onOpen,
+}: {
+  task: Task
+  now: Date
+  /** Opens the task's detail and edit dialog. */
+  onOpen: (id: number) => void
+}) {
   const alert = alertState(task, now)
   const overdue = alert === 'overdue'
   const reminding = alert === 'reminder'
@@ -26,7 +36,7 @@ export function TaskRow({ task, now }: { task: Task; now: Date }) {
             📌
           </span>
         )}
-        <span className="font-medium">{task.title}</span>
+        <TitleButton task={task} onOpen={onOpen} />
         {task.priority === 'High' && (
           <Tag className="bg-gray-700 text-white">High</Tag>
         )}

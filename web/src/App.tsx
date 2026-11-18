@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
 import { fetchMe, fetchTasks } from './api/client'
-import { TaskSection } from './components/TaskSection'
-import { TaskTable } from './components/TaskTable'
+import { TaskDialog } from './components/dialog/TaskDialog'
+import { TaskSection } from './components/scan/TaskSection'
+import { TaskTable } from './components/table/TaskTable'
 import { buildScan } from './helpers/taskHelpers'
 import { useNow } from './useNow'
 
@@ -20,6 +21,8 @@ const TABS: { id: Tab; label: string }[] = [
 function App() {
   const now = useNow()
   const [tab, setTab] = useState<Tab>('today')
+  // The task open in the detail and edit dialog, if any.
+  const [openTaskId, setOpenTaskId] = useState<number | null>(null)
 
   // Keyboard for the tabs (the standard ARIA tabs pattern): Tab reaches the selected tab only;
   // the arrow keys, Home and End move between tabs and select them.
@@ -40,6 +43,7 @@ function App() {
   const tasks = useQuery({ queryKey: ['tasks'], queryFn: fetchTasks })
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const scan = tasks.data ? buildScan(tasks.data, now) : null
+  const openTask = tasks.data?.find((t) => t.id === openTaskId)
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -101,6 +105,7 @@ function App() {
               title="Pinned"
               tasks={scan.pinned}
               now={now}
+              onOpen={setOpenTaskId}
               hideWhenEmpty
             />
             <TaskSection
@@ -108,17 +113,20 @@ function App() {
               subtitle={format(now, 'EEE d MMM')}
               tasks={scan.today}
               now={now}
+              onOpen={setOpenTaskId}
             />
             <TaskSection
               title="Tomorrow"
               subtitle={format(addDays(now, 1), 'EEE d MMM')}
               tasks={scan.tomorrow}
               now={now}
+              onOpen={setOpenTaskId}
             />
             <TaskSection
               title="Reminders"
               tasks={scan.reminders}
               now={now}
+              onOpen={setOpenTaskId}
               hideWhenEmpty
             />
           </div>
@@ -131,8 +139,16 @@ function App() {
             aria-labelledby="tab-all"
             hidden={tab !== 'all'}
           >
-            <TaskTable tasks={tasks.data} now={now} />
+            <TaskTable tasks={tasks.data} now={now} onOpen={setOpenTaskId} />
           </div>
+        )}
+        {openTask && (
+          <TaskDialog
+            key={openTask.id}
+            task={openTask}
+            now={now}
+            onClose={() => setOpenTaskId(null)}
+          />
         )}
       </main>
     </div>

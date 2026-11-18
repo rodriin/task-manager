@@ -169,8 +169,12 @@ All timestamps are stored in UTC and shown in the viewer's local time.
         ├── api/client.ts    # fetch calls to /api
         ├── types.ts
         ├── useNow.ts        # clock that ticks every minute
-        ├── helpers/         # plain task logic (overdue, reminders, sections) and its tests
-        └── components/      # UI pieces
+        ├── helpers/         # plain task logic (overdue, reminders, sections, edit form rules) and tests
+        └── components/
+            ├── scan/        # the Today screen: TaskSection and TaskLine (one task in a section)
+            ├── table/       # the All tasks table and its toolbar
+            ├── dialog/      # task detail and edit (TaskDialog) and its form fields
+            └── shared/      # pieces used by more than one view (Tag, TitleButton)
 ```
 
 ## Local development

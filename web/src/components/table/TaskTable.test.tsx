@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Task } from '../types'
+import type { Task } from '../../types'
 import { TaskTable } from './TaskTable'
 
 // Fixed "now": Tuesday 17 Nov 2026, 10:00 local time.
@@ -37,7 +37,7 @@ const titles = () =>
 
 describe('TaskTable', () => {
   it('labels every search and filter field', () => {
-    render(<TaskTable tasks={[task(1)]} now={NOW} />)
+    render(<TaskTable tasks={[task(1)]} now={NOW} onOpen={() => {}} />)
     expect(
       screen.getByRole('searchbox', { name: 'Search tasks' }),
     ).toBeVisible()
@@ -50,7 +50,7 @@ describe('TaskTable', () => {
     const tasks = Array.from({ length: 12 }, (_, i) =>
       task(i + 1, { deadline: i === 0 ? null : at(18 + i) }),
     )
-    render(<TaskTable tasks={tasks} now={NOW} />)
+    render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
 
     expect(screen.getByText('12 tasks')).toBeInTheDocument()
     expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
@@ -69,7 +69,7 @@ describe('TaskTable', () => {
       task(2, { deadline: at(20), pinned: true }),
       task(3, { deadline: at(19) }),
     ]
-    render(<TaskTable tasks={tasks} now={NOW} />)
+    render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
     expect(titles()).toEqual(['Task 1', 'Task 2', 'Task 3'])
 
     await userEvent.click(screen.getByRole('button', { name: 'Pin' }))
@@ -87,7 +87,7 @@ describe('TaskTable', () => {
       task(3, { title: 'Morning brief' }),
       task(4, { title: 'Tow bar C', archivedAt: at(16) }),
     ]
-    render(<TaskTable tasks={tasks} now={NOW} />)
+    render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
 
     await userEvent.type(screen.getByLabelText('Search tasks'), 'tow')
     expect(screen.getByText('3 tasks')).toBeInTheDocument()
@@ -109,7 +109,7 @@ describe('TaskTable', () => {
       task(2, { deadline: at(17, 20) }), // today
       task(3), // no deadline
     ]
-    render(<TaskTable tasks={tasks} now={NOW} />)
+    render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
 
     await userEvent.selectOptions(screen.getByLabelText('Deadline'), 'Overdue')
     expect(titles()).toEqual(['Task 1'])

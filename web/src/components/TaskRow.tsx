@@ -30,7 +30,7 @@ export function TaskRow({ task, now }: { task: Task; now: Date }) {
         {task.priority === 'High' && (
           <Tag className="bg-gray-700 text-white">High</Tag>
         )}
-        {task.status === 'In-Progress' && (
+        {task.status === 'In progress' && (
           <Tag className="bg-blue-200 text-blue-900">In progress</Tag>
         )}
       </div>

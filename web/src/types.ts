@@ -1,7 +1,7 @@
 // Shapes of the data the UI works with. They match the API's camelCase JSON,
 // except that timestamps are turned into Date objects when they arrive (see api/client.ts).
 
-export type Status = 'Not Started' | 'In-Progress' // Completed and Overdue are derived, never stored
+export type Status = 'Not started' | 'In progress' // Completed and Overdue are derived, never stored
 export type Priority = 'Low' | 'Medium' | 'High'
 
 export interface Task {

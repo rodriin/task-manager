@@ -60,7 +60,7 @@ There are no API tests. That was deliberate: UI tests target derived status and 
 
 ## Domain rules (easy to get wrong)
 
-- **Completed and Overdue are derived, never stored.** Completed means `completedAt` is set. Overdue means the deadline has passed and the task isn't completed. Stored `status` is only `Not Started` | `In-Progress`. Un-completing a task restores its prior status.
+- **Completed and Overdue are derived, never stored.** Completed means `completedAt` is set. Overdue means the deadline has passed and the task isn't completed. Stored `status` is only `Not started` | `In progress` (the same words the UI shows, so there is no mapping). Un-completing a task restores its prior status.
 - **Timestamps are UTC in storage, shown in local time.** "Today" and "Tomorrow" are the *viewer's* local day, computed in the UI. A task is overdue the minute its deadline passes.
 - **Alerts are in-app only; nothing buzzes.** A task alerts when its deadline is within the next 24 hours, its deadline has already passed (overdue), or its `remindAt` has been reached. It keeps alerting until it's completed, archived or snoozed. An overdue task must never go quiet by itself: that's the missed sign-off.
 - **The scan (opening screen), top to bottom:** **Pinned** (every open pinned task, whatever its dates), **Today** (deadline before the end of today, overdue included), **Tomorrow** (deadline tomorrow), **Reminders** (reminder already reached, and none of the above: deadline later or none). Only open tasks; each task appears in one section only, the first it qualifies for. A reminder that hasn't fired yet shows nowhere in the scan. Pinned and Reminders hide when empty. Logic lives in `web/src/helpers/taskHelpers.ts` (`buildScan`).

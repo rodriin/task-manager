@@ -58,7 +58,7 @@ class Task(SQLModel, table=True):
         # these are the names Postgres would give them.
         CheckConstraint("length(trim(title)) BETWEEN 1 AND 120", name="tasks_title_check"),
         CheckConstraint("length(description) <= 5000", name="tasks_description_check"),
-        CheckConstraint("status IN ('Not Started', 'In-Progress')", name="tasks_status_check"),
+        CheckConstraint("status IN ('Not started', 'In progress')", name="tasks_status_check"),
         CheckConstraint("category IN ('Admin', 'Supply', 'Flight', 'Personal')", name="tasks_category_check"),
         CheckConstraint("type IN ('Follow-up', 'Reminder', 'Sign-off', 'Recurring')", name="tasks_type_check"),
         CheckConstraint("priority IN ('Low', 'Medium', 'High')", name="tasks_priority_check"),
@@ -103,7 +103,7 @@ class Task(SQLModel, table=True):
     deadline: datetime | None = Field(default=None, **_timestamptz())
     # Only these two are stored. Completed = completed_at is set; Overdue = deadline has
     # passed and not completed. Both are worked out, never stored.
-    status: str = Field(default="Not Started", sa_type=Text, sa_column_kwargs={"server_default": "Not Started"})
+    status: str = Field(default="Not started", sa_type=Text, sa_column_kwargs={"server_default": "Not started"})
     category: str | None = Field(default=None, sa_type=Text)  # plain text on purpose, no categories table
     type: str | None = Field(default=None, sa_type=Text)
     priority: str = Field(default="Low", sa_type=Text, sa_column_kwargs={"server_default": "Low"})

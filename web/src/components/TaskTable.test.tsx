@@ -13,7 +13,7 @@ function task(id: number, fields: Partial<Task> = {}): Task {
     title: `Task ${id}`,
     description: null,
     deadline: null,
-    status: 'Not Started',
+    status: 'Not started',
     category: null,
     type: null,
     priority: 'Low',

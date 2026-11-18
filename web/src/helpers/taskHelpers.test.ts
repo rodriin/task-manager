@@ -23,7 +23,7 @@ function task(fields: Partial<Task> = {}): Task {
     title: 'Task',
     description: null,
     deadline: null,
-    status: 'Not Started',
+    status: 'Not started',
     category: null,
     type: null,
     priority: 'Low',
@@ -192,7 +192,7 @@ describe('alertState', () => {
 describe('taskStatus and the Status filter', () => {
   it('puts Archived before Completed, then the stored status', () => {
     expect(taskStatus(task())).toBe('Not started')
-    expect(taskStatus(task({ status: 'In-Progress' }))).toBe('In progress')
+    expect(taskStatus(task({ status: 'In progress' }))).toBe('In progress')
     expect(taskStatus(task({ completedAt: at(16, 9) }))).toBe('Completed')
     expect(
       taskStatus(task({ completedAt: at(16, 9), archivedAt: at(16, 10) })),
@@ -203,7 +203,7 @@ describe('taskStatus and the Status filter', () => {
     expect(matchesStatus(task(), 'Open')).toBe(true)
     expect(
       matchesStatus(
-        task({ status: 'In-Progress', deadline: at(16, 9) }),
+        task({ status: 'In progress', deadline: at(16, 9) }),
         'Open',
       ),
     ).toBe(true)
@@ -211,8 +211,8 @@ describe('taskStatus and the Status filter', () => {
     expect(matchesStatus(task({ archivedAt: at(16, 9) }), 'Open')).toBe(false)
   })
 
-  it('In progress matches only open tasks stored as In-Progress', () => {
-    const started = task({ status: 'In-Progress' })
+  it('In progress matches only open tasks stored as In progress', () => {
+    const started = task({ status: 'In progress' })
     expect(matchesStatus(started, 'In progress')).toBe(true)
     expect(matchesStatus(started, 'Not started')).toBe(false)
     expect(

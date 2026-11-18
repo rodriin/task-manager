@@ -16,7 +16,7 @@ from pydantic.alias_generators import to_camel
 
 # Allowed values. They match the CHECK constraints in schema.sql, so a bad value is
 # caught here with a clear message instead of at the database.
-Status = Literal["Not Started", "In-Progress"]  # Completed and Overdue are derived, never stored
+Status = Literal["Not started", "In progress"]  # Completed and Overdue are derived, never stored
 Category = Literal["Admin", "Supply", "Flight", "Personal"]
 TaskType = Literal["Follow-up", "Reminder", "Sign-off", "Recurring"]
 Priority = Literal["Low", "Medium", "High"]
@@ -108,7 +108,7 @@ class TaskCreate(WriteModel):
     title: Title
     description: Description | None = None
     deadline: AwareDatetime | None = None
-    status: Status = "Not Started"
+    status: Status = "Not started"
     category: Category | None = None
     type: TaskType | None = None
     priority: Priority = "Low"

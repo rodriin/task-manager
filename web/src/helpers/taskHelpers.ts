@@ -9,7 +9,7 @@ import {
   isSameWeek,
   startOfDay,
 } from 'date-fns'
-import type { Task } from '../types'
+import type { Status, Task } from '../types'
 
 /** Open = not completed and not archived. Only open tasks appear in the scan. */
 export function isOpen(task: Task): boolean {
@@ -119,15 +119,16 @@ export function alertState(
 // ---------------------------------------------------------------------------
 // Full task list (All tasks tab): status, filters and search.
 
-/** How far a task has got. Archived wins over Completed; open tasks show their stored status. */
-export type TaskStatus =
-  'Not started' | 'In progress' | 'Completed' | 'Archived'
+/**
+ * How far a task has got. Archived wins over Completed; open tasks show their stored status,
+ * which uses the same words as the UI ('Not started', 'In progress').
+ */
+export type TaskStatus = Status | 'Completed' | 'Archived'
 
 export function taskStatus(task: Task): TaskStatus {
   if (task.archivedAt !== null) return 'Archived'
   if (task.completedAt !== null) return 'Completed'
-
-  return task.status === 'In-Progress' ? 'In progress' : 'Not started'
+  return task.status
 }
 
 /** Options of the Status filter. Open = Not started plus In progress. */

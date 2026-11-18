@@ -15,8 +15,8 @@ CREATE TABLE tasks (
     title         text        NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 120),
     description   text                 CHECK (length(description) <= 5000),
     deadline      timestamptz,
-    status        text        NOT NULL DEFAULT 'Not Started'
-                              CHECK (status IN ('Not Started', 'In-Progress')),
+    status        text        NOT NULL DEFAULT 'Not started'
+                              CHECK (status IN ('Not started', 'In progress')),
     category      text                 CHECK (category IN ('Admin', 'Supply', 'Flight', 'Personal')),
     type          text                 CHECK (type IN ('Follow-up', 'Reminder', 'Sign-off', 'Recurring')),
     priority      text        NOT NULL DEFAULT 'Low'

@@ -159,10 +159,10 @@ There are no API tests, by design. Check with curl or the interactive docs at <h
 
 - [x] `GET /api/me` returns `displayName: "Maverick"`.
 - [x] `GET /api/tasks` returns 66 tasks with camelCase keys, archived ones included, and timestamps with a UTC offset.
-- [x] `POST /api/tasks` with only a title returns 201, an id of 67 or more, `ownerId: 1`, `status: "Not Started"` and `priority: "Low"`.
+- [x] `POST /api/tasks` with only a title returns 201, an id of 67 or more, `ownerId: 1`, `status: "Not started"` and `priority: "Low"`.
 - [x] `POST` with `remind_at` (snake_case), a time with no time zone, or a blank title returns 422.
 - [x] `PATCH` pinned task 10 with `archivedAt` returns 200 with `pinned: false`.
-- [x] `PATCH` snoozed task 11 with `completedAt` returns 200 with `snoozedUntil: null`. Then `completedAt: null` gives back its original status (also checked on In-Progress task 2).
+- [x] `PATCH` snoozed task 11 with `completedAt` returns 200 with `snoozedUntil: null`. Then `completedAt: null` gives back its original status (also checked on In progress task 2).
 - [x] `PATCH` a `remindAt` later than the deadline returns 422 `remind_not_after_deadline`.
 - [x] `PATCH /api/tasks/9999` returns 404.
 - [x] The UI is still served at `/`, and `/docs` lists the routes.
@@ -295,6 +295,7 @@ One toolbar row above the table, wrapping on narrow screens:
 
 - `alertState(task, now)`: `'overdue'`, `'reminder'` or none; open tasks only. Used for colour by both the scan rows and the table.
 - `taskStatus(task)`: Archived, Completed, In progress or Not started, in that order of precedence.
+- Stored status renamed from `Not Started` / `In-Progress` to `Not started` / `In progress`, the words the UI shows, so `taskStatus` returns it with no mapping. Changed in `schema.sql`, `api/models.py` (check and default), `api/schemas.py`, the seed, and `web/src/types.ts`. Needs `docker compose down -v` to recreate the table rule and re-seed. Verified: the database rule lists the new values, the seed loads (38 Not started, 28 In progress), the API defaults to `Not started` and rejects the old `In-Progress` with 422.
 - `matchesStatus`, `matchesDeadline(task, filter, now)` and `matchesSearch`: one function per filter. A task can match both Overdue and Today (overdue earlier today); each option is checked on its own.
 - `web/src/helpers/formatDates.ts`: `when` (time, day and time, or with the year when not this year) and `day`, shared by the scan and the table.
 - Tests added to `taskHelpers.test.ts`.

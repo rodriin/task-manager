@@ -98,7 +98,7 @@ def update_task(task_id: int, body: TaskUpdate, session: SessionDep):
         changes["snoozed_until"] = None
 
     # Un-completing only clears completed_at. Completing never touched the stored status,
-    # so the task's earlier status ("In-Progress", say) comes back by itself.
+    # so the task's earlier status ("In progress", say) comes back by itself.
     for field, value in changes.items():
         setattr(task, field, value)
     session.commit()

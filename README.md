@@ -130,7 +130,7 @@ The display name is `preferredName` when available, otherwise `firstname` + `las
 | `title` | text, required | Short text shown in lists |
 | `description` | text, optional | |
 | `deadline` | timestamp, optional | |
-| `status` | `Not Started` or `In-Progress` | Completed and Overdue are derived, not stored |
+| `status` | `Not started` or `In progress` | Completed and Overdue are derived, not stored |
 | `category` | `Admin`, `Supply`, `Flight`, `Personal` or empty | |
 | `type` | `Follow-up`, `Reminder`, `Sign-off`, `Recurring` or empty | |
 | `priority` | `Low`, `Medium`, `High` | Defaults to Low |

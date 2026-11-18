@@ -1,10 +1,13 @@
 import type { Task } from '../types'
 import {
+  EMPTY_VALUES,
   normalizeTime,
   parseLocal,
+  planCreate,
   planSave,
   saveErrorMessage,
   shiftReminder,
+  toCloneValues,
   toFormValues,
   type FormValues,
 } from './taskForm'
@@ -287,6 +290,138 @@ describe('saveErrorMessage', () => {
   it('shows any other message as it came', () => {
     expect(saveErrorMessage('Task not found')).toBe(
       "Couldn't save (Task not found). Nothing was saved.",
+    )
+  })
+})
+
+describe('planCreate: new task', () => {
+  const create = (changes: Partial<FormValues>) =>
+    planCreate({ ...EMPTY_VALUES, ...changes }, EMPTY_VALUES, NOW)
+
+  it('needs only a title, and sends the defaults', () => {
+    const plan = create({ title: '  Check the tow bar adapter fits ' })
+    expect(plan.errors).toEqual({})
+    expect(plan.body).toEqual({
+      title: 'Check the tow bar adapter fits',
+      description: null,
+      deadline: null,
+      remindAt: null,
+      status: 'Not started',
+      priority: 'Low',
+      category: null,
+      type: null,
+      pinned: false,
+    })
+    expect(plan.deadlinePassed).toBe(false)
+  })
+
+  it('an empty title is an error', () => {
+    expect(create({ title: '   ' }).errors.title).toBe('A title is needed.')
+  })
+
+  it('a reminder after the deadline is an error, never moved', () => {
+    const plan = create({
+      title: 'Brief',
+      deadlineDate: '2026-11-18',
+      deadlineTime: '20:00',
+      remindDate: '2026-11-19',
+      remindTime: '07:00',
+    })
+    expect(plan.errors.remindAt).toBe(
+      "The reminder can't be after the deadline.",
+    )
+    expect(plan.reminderMovesTo).toBeNull()
+  })
+
+  it('notes a deadline that has passed, unless it is logged as completed', () => {
+    const past = {
+      title: 'Brief',
+      deadlineDate: '2026-11-16',
+      deadlineTime: '20:00',
+    }
+    expect(create(past).deadlinePassed).toBe(true)
+    const done = create({ ...past, completed: true })
+    expect(done.deadlinePassed).toBe(false)
+    expect(done.body.completedAt).toEqual(NOW)
+  })
+})
+
+describe('planCreate: clone', () => {
+  // Last week's roll-up: done, pinned, due Fri 13 Nov 15:00, reminder Thu 12 Nov 07:00.
+  const rollUp = task({
+    title: 'Status roll-up to the squadron',
+    description: 'Send by email',
+    status: 'In progress',
+    priority: 'High',
+    category: 'Admin',
+    type: 'Recurring',
+    deadline: at(13, 15),
+    remindAt: at(12, 7),
+    pinned: true,
+    completedAt: at(13, 14),
+  })
+  const initial = toCloneValues(toFormValues(rollUp))
+
+  it('copies the work and Pinned, and resets the state', () => {
+    expect(initial).toEqual({
+      ...toFormValues(rollUp),
+      status: 'Not started',
+      pinned: true,
+      completed: false,
+      archived: false,
+    })
+    const plan = planCreate(initial, initial, NOW)
+    expect(plan.body).toEqual({
+      title: 'Status roll-up to the squadron',
+      description: 'Send by email',
+      deadline: at(13, 15),
+      remindAt: at(12, 7),
+      status: 'Not started',
+      priority: 'High',
+      category: 'Admin',
+      type: 'Recurring',
+      pinned: true,
+    })
+    expect(plan.deadlinePassed).toBe(true)
+  })
+
+  it('keeps unsaved edits from the edit form', () => {
+    const edited = toCloneValues(edit(rollUp, { title: 'Roll-up, short form' }))
+    expect(planCreate(edited, edited, NOW).body.title).toBe(
+      'Roll-up, short form',
+    )
+  })
+
+  it('moving the deadline later leaves the reminder', () => {
+    const plan = planCreate(
+      { ...initial, deadlineDate: '2026-11-20' },
+      initial,
+      NOW,
+    )
+    expect(plan.body.deadline).toEqual(at(20, 15))
+    expect(plan.body.remindAt).toEqual(at(12, 7))
+    expect(plan.reminderMovesTo).toBeNull()
+  })
+
+  it('moving the deadline before the reminder shifts it by the same amount', () => {
+    const plan = planCreate(
+      { ...initial, deadlineDate: '2026-11-11' },
+      initial,
+      NOW,
+    )
+    expect(plan.body.remindAt).toEqual(at(10, 7))
+    expect(plan.reminderMovesTo).toEqual(at(10, 7))
+    expect(plan.errors).toEqual({})
+  })
+
+  it('a reminder typed by hand after the deadline is an error', () => {
+    const plan = planCreate(
+      { ...initial, deadlineDate: '2026-11-20', remindDate: '2026-11-21' },
+      initial,
+      NOW,
+    )
+    expect(plan.errors.remindAt).toBe(
+      "The reminder can't be after the deadline.",
     )
   })
 })

@@ -100,3 +100,30 @@ export async function updateTask(id: number, patch: TaskPatch): Promise<Task> {
   })
   return parseTask(task)
 }
+
+/** The fields a new task (or a clone) may set: the same as `TaskCreate` in api/schemas.py. */
+export type TaskCreateBody = Pick<Task, 'title'> &
+  Partial<
+    Pick<
+      Task,
+      | 'description'
+      | 'deadline'
+      | 'status'
+      | 'category'
+      | 'type'
+      | 'priority'
+      | 'remindAt'
+      | 'pinned'
+      | 'completedAt'
+    >
+  >
+
+/** POST /api/tasks: a new task, or a clone. Returns the task as saved, with its id. */
+export async function createTask(body: TaskCreateBody): Promise<Task> {
+  const task = await requestJson<TaskJson>('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return parseTask(task)
+}

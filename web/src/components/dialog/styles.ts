@@ -9,9 +9,15 @@ const BUTTON = 'rounded border px-3 py-1 disabled:opacity-40'
 /** The main action (Save): blue, so it stands out. */
 export const PRIMARY_BUTTON = `${BUTTON} border-blue-600 bg-blue-600 text-white hover:bg-blue-700 disabled:hover:bg-blue-600`
 
+/** A second main action (Clone): outlined in the primary blue, so it doesn't look like Cancel. */
+export const ACCENT_BUTTON = `${BUTTON} border-blue-600 bg-white text-blue-700 hover:bg-blue-50`
+
 /** Other actions (Cancel). */
 export const SECONDARY_BUTTON = `${BUTTON} border-gray-300 bg-white hover:bg-gray-100`
 
 /** Small Clear button, the same look as Clear on the table toolbar. */
 export const CLEAR_BUTTON =
   'rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-white'
+
+/** Form warnings (the reminder will move, the deadline has passed): amber. Errors are red. */
+export const WARNING = 'text-sm font-medium text-amber-800'

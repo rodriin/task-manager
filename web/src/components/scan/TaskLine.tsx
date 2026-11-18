@@ -1,6 +1,7 @@
 import { when } from '../../helpers/formatDates'
-import { alertState, isSnoozed } from '../../helpers/taskHelpers'
+import { alertState, isNew, isSnoozed } from '../../helpers/taskHelpers'
 import type { Task } from '../../types'
+import { NewTag } from '../shared/NewTag'
 import { Tag } from '../shared/Tag'
 import { TitleButton } from '../shared/TitleButton'
 
@@ -8,6 +9,7 @@ import { TitleButton } from '../shared/TitleButton'
  * One task in a section of the scan (a line in a list). Color carries the alert state:
  * red = overdue; amber = reminder reached (and not overdue); otherwise plain.
  * Red and amber are kept for alerts only, so the High priority tag is neutral.
+ * A task in its first 24 hours carries the violet New tag, overdue or not.
  */
 export function TaskLine({
   task,
@@ -43,6 +45,7 @@ export function TaskLine({
         {task.status === 'In progress' && (
           <Tag className="bg-blue-200 text-blue-900">In progress</Tag>
         )}
+        {isNew(task, now) && <NewTag />}
       </div>
       <div className="flex flex-wrap flex-col text-sm text-gray-600">
         <div className="flex flex-wrap justify-between grow">

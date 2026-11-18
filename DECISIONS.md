@@ -235,3 +235,21 @@ If time allows: pin, paginate, sort, filter, search, print.
 **Archiving an open task keeps the other edits.** Wrapping up a task often means fixing the title and then putting it away, and that should be one step, not two. Ticking Archived still locks the fields and unticks Pinned, the same as the server, so the checkbox always behaves the same way.
 
 **Completed tasks stay editable.** Completing is reversible, and correcting finished work is normal. Only archived tasks lock.
+
+---
+
+## New task and clone
+
+**One dialog for new, clone and edit.** The form, its checks and the date rules are already built and tested for edit. New and clone are the same form with a different starting point and a POST instead of a PATCH. A second form would mean two sets of rules that can drift apart.
+
+**Quick capture is the New task dialog with only the title filled.** New task, type, Enter. A separate always-visible capture box would be a second way to create a task with its own rules, for a saving of one click. Worth revisiting if he captures a lot on the move.
+
+**Clone copies the work, not its state.** Title, description, priority, category, type and dates are copied. Status goes back to Not started, and Completed, Archived and the snooze start empty: the new copy hasn't been started. Pinned is copied: a pinned rhythm item stays pinned. The title is kept as is, with no "Copy of", because the Monday brief is still the Monday brief.
+
+**New tasks land at the end of the full list.** The table is in id order, so a new task is on the last page. It shows in the scan straight away, which is where he'll look.
+
+**Focus after closing a clone is deferred.** The native dialog returns focus to whatever opened it, but the Clone button is gone by the time the clone closes, so focus falls back to the page. Fixing it means finding the original title button in the page, more than keeping a task id in state, which is too much for the first cut.
+
+**"New" for a task's first 24 hours.** A violet tag, a scan section after Tomorrow, and a Status filter option, so a fresh capture with no date is still visible and doesn't get added twice. The creation toast just confirms and fades; the tag and section do the remembering.
+
+**Scan sections collapse.** The user can choose what to look at; all open by default, and the count stays visible when collapsed.

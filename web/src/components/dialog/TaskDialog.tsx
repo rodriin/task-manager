@@ -1,22 +1,31 @@
-// Task detail and edit, in one dialog that opens on the form.
+// Task detail and edit, new task and clone: one dialog that opens on the form.
 // The native <dialog> with showModal() gives the focus trap, Escape to close, the backdrop,
 // and makes the page behind inert, with no library.
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiError, updateTask, type TaskPatch } from '../../api/client'
+import {
+  ApiError,
+  createTask,
+  updateTask,
+  type TaskCreateBody,
+  type TaskPatch,
+} from '../../api/client'
 import { day, when } from '../../helpers/formatDates'
 import {
   CATEGORIES,
   DEFAULT_DEADLINE_TIME,
   DEFAULT_REMINDER_TIME,
   DESCRIPTION_MAX,
+  EMPTY_VALUES,
   PRIORITIES,
   STATUSES,
   TITLE_MAX,
   TYPES,
   hasErrors,
+  planCreate,
   planSave,
   saveErrorMessage,
+  toCloneValues,
   toFormValues,
   type FormValues,
 } from '../../helpers/taskForm'
@@ -26,56 +35,106 @@ import { DateTimeField } from './DateTimeField'
 import { FieldError } from './FieldError'
 import { Select } from './Select'
 import { TaskFacts } from './TaskFacts'
-import { FIELD, PRIMARY_BUTTON, SECONDARY_BUTTON } from './styles'
+import {
+  ACCENT_BUTTON,
+  FIELD,
+  PRIMARY_BUTTON,
+  SECONDARY_BUTTON,
+  WARNING,
+} from './styles'
+
+/**
+ * What the dialog is for: edit a stored task, add a new one, or add a clone. A clone starts
+ * from the edit form as it was on screen (`toCloneValues`), unsaved edits included.
+ */
+export type DialogMode =
+  | { kind: 'edit'; task: Task }
+  | { kind: 'new' }
+  | { kind: 'clone'; values: FormValues }
 
 interface Props {
-  task: Task
+  mode: DialogMode
   now: Date
   /** Called once the dialog has closed (saved, cancelled, Escape or backdrop). */
   onClose: () => void
+  /** Edit only: Clone was clicked; gets the clone's starting values. The task isn't saved. */
+  onClone?: (values: FormValues) => void
+  /** New and clone: the task the API created. */
+  onCreated?: (task: Task) => void
 }
 
+const HEADINGS = { edit: 'Edit task', new: 'New task', clone: 'Clone task' }
+
 /**
- * The form copies the task once, when it opens (App gives it `key={task.id}`), so a background
- * refetch doesn't wipe what's being typed. The save goes through `planSave`, which sends only
- * what changed.
+ * The form copies its starting values once, when it opens (App gives it a `key` per task and
+ * mode), so a background refetch doesn't wipe what's being typed.
+ * Edit saves through `planSave` (a PATCH with only what changed); new and clone through
+ * `planCreate` (a POST with every field).
  */
-export function TaskDialog({ task, now, onClose }: Props) {
+export function TaskDialog({ mode, now, onClose, onClone, onCreated }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
+  const deadlineRef = useRef<HTMLInputElement>(null)
   const archivedRef = useRef<HTMLInputElement>(null)
   const id = useId()
   const queryClient = useQueryClient()
 
-  const [values, setValues] = useState<FormValues>(() => toFormValues(task))
+  const task = mode.kind === 'edit' ? mode.task : null
+  // The form as it opened: what "edited" is measured against.
+  const [initial] = useState<FormValues>(() =>
+    mode.kind === 'edit'
+      ? toFormValues(mode.task)
+      : mode.kind === 'clone'
+        ? mode.values
+        : EMPTY_VALUES,
+  )
+  const [values, setValues] = useState<FormValues>(initial)
   // Pinned as it was before Archived was ticked, so unticking Archived can put it back.
-  const [pinnedBeforeArchive, setPinnedBeforeArchive] = useState(task.pinned)
+  const [pinnedBeforeArchive, setPinnedBeforeArchive] = useState(initial.pinned)
 
-  const storedArchived = task.archivedAt !== null
+  const storedArchived = task !== null && task.archivedAt !== null
   const locked = values.archived
-  const plan = planSave(task, values, now)
-  const canSave = Object.keys(plan.patch).length > 0 && !hasErrors(plan.errors)
+  const editPlan = task ? planSave(task, values, now) : null
+  const createPlan = task ? null : planCreate(values, initial, now)
+  const errors = (editPlan ?? createPlan)!.errors
+  const reminderMovesTo = (editPlan ?? createPlan)!.reminderMovesTo
+  const canSave =
+    !hasErrors(errors) &&
+    (editPlan ? Object.keys(editPlan.patch).length > 0 : true)
 
   const save = useMutation({
-    mutationFn: (patch: TaskPatch) => updateTask(task.id, patch),
+    mutationFn: (request: { patch: TaskPatch } | { body: TaskCreateBody }) =>
+      'patch' in request
+        ? updateTask(task!.id, request.patch)
+        : createTask(request.body),
     onSuccess: (saved) => {
       // No optimistic update: the scan and table change only once the database has accepted it.
       queryClient.setQueryData<Task[]>(['tasks'], (tasks) =>
-        tasks?.map((t) => (t.id === saved.id ? saved : t)),
+        task
+          ? tasks?.map((t) => (t.id === saved.id ? saved : t))
+          : tasks && [...tasks, saved],
       )
+      if (!task) onCreated?.(saved)
       dialogRef.current?.close()
     },
   })
 
-  // Open as a modal once, when mounted; focus the title, or Archived when the form opens locked.
+  // Open as a modal once, when mounted. Focus goes to the title; to Archived when the form opens
+  // locked; to the Deadline date for a clone, the field most likely to change.
   // (Kept off the task's later values: a save that archives must not reopen the dialog.)
-  const [opensLocked] = useState(storedArchived)
+  const [firstFocus] = useState(() =>
+    storedArchived
+      ? archivedRef
+      : mode.kind === 'clone'
+        ? deadlineRef
+        : titleRef,
+  )
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
     if (!dialog.open) dialog.showModal()
-    ;(opensLocked ? archivedRef : titleRef).current?.focus()
-  }, [opensLocked])
+    firstFocus.current?.focus()
+  }, [firstFocus])
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }))
@@ -83,7 +142,7 @@ export function TaskDialog({ task, now, onClose }: Props) {
   const toggleArchived = (archived: boolean) => {
     if (archived && storedArchived) {
       // Re-ticking an archived task puts every field back to what is stored, so nothing changes.
-      setValues(toFormValues(task))
+      setValues(initial)
     } else if (archived) {
       // Archiving an open task keeps the edits; Pinned unticks, the same as the server.
       setPinnedBeforeArchive(values.pinned)
@@ -100,9 +159,15 @@ export function TaskDialog({ task, now, onClose }: Props) {
   const submit = (event: { preventDefault: () => void }) => {
     event.preventDefault()
     // Plan again with the real time of the save: Completed and Archived are stamped with it.
-    const final = planSave(task, values, new Date())
-    if (Object.keys(final.patch).length > 0 && !hasErrors(final.errors)) {
-      save.mutate(final.patch)
+    const at = new Date()
+    if (task) {
+      const final = planSave(task, values, at)
+      if (Object.keys(final.patch).length > 0 && !hasErrors(final.errors)) {
+        save.mutate({ patch: final.patch })
+      }
+    } else {
+      const final = planCreate(values, initial, at)
+      if (!hasErrors(final.errors)) save.mutate({ body: final.body })
     }
   }
 
@@ -133,7 +198,7 @@ export function TaskDialog({ task, now, onClose }: Props) {
       <form onSubmit={submit} className="flex flex-col gap-4 p-5" noValidate>
         <div className="flex items-start justify-between gap-3">
           <h2 id={ids.heading} className="text-lg font-semibold">
-            Edit task
+            {HEADINGS[mode.kind]}
           </h2>
           <button
             type="button"
@@ -145,9 +210,9 @@ export function TaskDialog({ task, now, onClose }: Props) {
           </button>
         </div>
 
-        <TaskFacts task={task} now={now} />
+        {task && <TaskFacts task={task} now={now} />}
 
-        {locked && (
+        {task && locked && (
           <p className="rounded bg-gray-100 px-3 py-2 text-sm text-gray-700">
             {task.archivedAt
               ? `Archived on ${day(task.archivedAt, now)}.`
@@ -169,14 +234,12 @@ export function TaskDialog({ task, now, onClose }: Props) {
               value={values.title}
               maxLength={TITLE_MAX}
               required
-              aria-invalid={plan.errors.title ? true : undefined}
-              aria-describedby={
-                plan.errors.title ? `${ids.title}-error` : undefined
-              }
+              aria-invalid={errors.title ? true : undefined}
+              aria-describedby={errors.title ? `${ids.title}-error` : undefined}
               onChange={(e) => set('title', e.target.value)}
               className={`${FIELD} w-full`}
             />
-            <FieldError id={`${ids.title}-error`} message={plan.errors.title} />
+            <FieldError id={`${ids.title}-error`} message={errors.title} />
           </div>
 
           <div className="flex flex-col gap-1">
@@ -193,7 +256,7 @@ export function TaskDialog({ task, now, onClose }: Props) {
             />
             <FieldError
               id={`${ids.description}-error`}
-              message={plan.errors.description}
+              message={errors.description}
             />
           </div>
 
@@ -236,7 +299,13 @@ export function TaskDialog({ task, now, onClose }: Props) {
             date={values.deadlineDate}
             time={values.deadlineTime}
             defaultTime={DEFAULT_DEADLINE_TIME}
-            error={plan.errors.deadline}
+            error={errors.deadline}
+            dateRef={deadlineRef}
+            note={
+              createPlan?.deadlinePassed
+                ? 'This deadline has passed: it will show as overdue.'
+                : undefined
+            }
             onChange={(date, time) =>
               setValues((v) => ({
                 ...v,
@@ -251,18 +320,18 @@ export function TaskDialog({ task, now, onClose }: Props) {
             date={values.remindDate}
             time={values.remindTime}
             defaultTime={DEFAULT_REMINDER_TIME}
-            error={plan.errors.remindAt}
+            error={errors.remindAt}
             note={
-              plan.reminderMovesTo
-                ? `Reminder moves to ${when(plan.reminderMovesTo, now)}`
+              reminderMovesTo
+                ? `Reminder moves to ${when(reminderMovesTo, now)}`
                 : undefined
             }
             onChange={(date, time) =>
               setValues((v) => ({ ...v, remindDate: date, remindTime: time }))
             }
           />
-          {plan.snoozeEnds && (
-            <p className="text-sm text-gray-700" aria-live="polite">
+          {editPlan?.snoozeEnds && (
+            <p className={WARNING} aria-live="polite">
               Snooze ends: the dates changed.
             </p>
           )}
@@ -283,14 +352,17 @@ export function TaskDialog({ task, now, onClose }: Props) {
           </div>
         </fieldset>
 
-        {/* Archived sits outside the fieldset, so it stays usable when everything else is locked. */}
-        <Checkbox
-          ref={archivedRef}
-          id={ids.archived}
-          label="Archived"
-          checked={values.archived}
-          onChange={toggleArchived}
-        />
+        {/* Archived sits outside the fieldset, so it stays usable when everything else is locked.
+            Edit only: a new task can't be created archived. */}
+        {task && (
+          <Checkbox
+            ref={archivedRef}
+            id={ids.archived}
+            label="Archived"
+            checked={values.archived}
+            onChange={toggleArchived}
+          />
+        )}
 
         <p role="alert" className="text-sm text-red-700 empty:hidden">
           {save.isError
@@ -300,7 +372,18 @@ export function TaskDialog({ task, now, onClose }: Props) {
             : ''}
         </p>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          {task && (
+            // Outside the locked fieldset, so done and archived tasks can be cloned. Copies the
+            // form as it is on screen; this task is not saved.
+            <button
+              type="button"
+              onClick={() => onClone?.(toCloneValues(values))}
+              className={`${ACCENT_BUTTON} mr-auto`}
+            >
+              Clone
+            </button>
+          )}
           <button
             type="button"
             onClick={() => dialogRef.current?.close()}
@@ -313,7 +396,7 @@ export function TaskDialog({ task, now, onClose }: Props) {
             disabled={!canSave || save.isPending}
             className={PRIMARY_BUTTON}
           >
-            {save.isPending ? 'Saving…' : 'Save'}
+            {save.isPending ? 'Saving…' : task ? 'Save' : 'Add task'}
           </button>
         </div>
       </form>

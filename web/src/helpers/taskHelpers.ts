@@ -37,6 +37,19 @@ export function isSnoozed(task: Task, now: Date): boolean {
   )
 }
 
+/** How long a task counts as New after it's created. */
+export const NEW_FOR_MS = 24 * 60 * 60 * 1000
+
+/**
+ * New = open and created in the past 24 hours, overdue or not. Derived from createdAt, never
+ * stored. It keeps a fresh capture easy to see (and hard to add twice) for its first day.
+ */
+export function isNew(task: Task, now: Date): boolean {
+  // No lower bound: `now` ticks once a minute and the server's clock may differ slightly, so a
+  // task created a moment ago can look a few seconds "in the future". It is still new.
+  return isOpen(task) && now.getTime() - task.createdAt.getTime() < NEW_FOR_MS
+}
+
 const time = (date: Date | null) =>
   date === null ? Number.MAX_SAFE_INTEGER : date.getTime()
 
@@ -64,17 +77,20 @@ export interface Scan {
   pinned: Task[]
   today: Task[]
   tomorrow: Task[]
+  newTasks: Task[]
   reminders: Task[]
 }
 
 /**
- * Splits the open tasks into the four sections of the scan. Each task lands in the
+ * Splits the open tasks into the five sections of the scan. Each task lands in the
  * first section it qualifies for, so it appears once:
  *
  * 1. Pinned: every pinned task, whatever its dates. Too important to be out of sight.
  * 2. Today: deadline before the end of today, overdue included.
  * 3. Tomorrow: deadline tomorrow.
- * 4. Reminders: the reminder has been reached, and the task isn't in any
+ * 4. New: created in the past 24 hours, so a task just added with no date (or a later one)
+ *    is still in sight. Newest first.
+ * 5. Reminders: the reminder has been reached, and the task isn't in any
  *    section above (deadline later, or no deadline).
  *
  * Tasks that fit none of these (due later, no reminder reached yet) are left for the full list.
@@ -82,7 +98,13 @@ export interface Scan {
 export function buildScan(tasks: Task[], now: Date): Scan {
   const startOfTomorrow = startOfDay(addDays(now, 1))
   const startOfDayAfter = startOfDay(addDays(now, 2))
-  const scan: Scan = { pinned: [], today: [], tomorrow: [], reminders: [] }
+  const scan: Scan = {
+    pinned: [],
+    today: [],
+    tomorrow: [],
+    newTasks: [],
+    reminders: [],
+  }
 
   for (const task of tasks.filter(isOpen)) {
     const deadline = task.deadline?.getTime()
@@ -91,12 +113,16 @@ export function buildScan(tasks: Task[], now: Date): Scan {
       scan.today.push(task)
     else if (deadline !== undefined && deadline < startOfDayAfter.getTime())
       scan.tomorrow.push(task)
+    else if (isNew(task, now)) scan.newTasks.push(task)
     else if (isReminderActive(task, now)) scan.reminders.push(task)
   }
 
   scan.pinned.sort(overdueFirst(now))
   scan.today.sort(overdueFirst(now))
   scan.tomorrow.sort(byDeadline)
+  scan.newTasks.sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id - a.id,
+  )
   scan.reminders.sort(byReminder)
   return scan
 }
@@ -131,9 +157,13 @@ export function taskStatus(task: Task): TaskStatus {
   return task.status
 }
 
-/** Options of the Status filter. Open = Not started plus In progress. */
+/**
+ * Options of the Status filter. Open = Not started plus In progress. New = the tasks showing
+ * the New tag (open, created in the past 24 hours), overdue ones included.
+ */
 export const STATUS_FILTERS = [
   'Open',
+  'New',
   'Not started',
   'In progress',
   'Completed',
@@ -141,8 +171,14 @@ export const STATUS_FILTERS = [
 ] as const
 export type StatusFilter = (typeof STATUS_FILTERS)[number]
 
-export function matchesStatus(task: Task, filter: StatusFilter): boolean {
-  return filter === 'Open' ? isOpen(task) : taskStatus(task) === filter
+export function matchesStatus(
+  task: Task,
+  filter: StatusFilter,
+  now: Date,
+): boolean {
+  if (filter === 'Open') return isOpen(task)
+  if (filter === 'New') return isNew(task, now)
+  return taskStatus(task) === filter
 }
 /** Options of the Deadline filter. Each is checked on its own, so they can overlap. */
 export const DEADLINE_FILTERS = [

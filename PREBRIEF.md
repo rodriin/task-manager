@@ -39,7 +39,7 @@ Key takeaways:
 
 What the tool aims to address day-one:
 
-- One place for every task, with a one-field quick capture (title only) so a task can be captured in seconds.
+- One place for every task, with a one-field quick capture (title only) so a task can be captured in seconds (New task → title → Enter).
 - Opens on Pinned, Today, Tomorrow and Reminders, not the full list. The whole pile is one click away and includes archived tasks, marked as archived, so nothing is ever lost. This is the answer to "everything in there, but I can't look at everything".
 - Alerts appear inside the app for anything overdue, due soon, or past its reminder time, and keep showing until it's done, archived or snoozed. Nothing buzzes. Snooze quiets an alert but the task stays visible, marked as snoozed. This is the answer to "hate pings, burned by silence".
 - Overdue is calculated from the deadline, so nothing has to be marked late by hand and there are no data inconsistencies between deadline and overdue caused by data manipulation.
@@ -51,10 +51,10 @@ What the tool aims to address day-one:
 
 Initial features:
 
-- Today and tomorrow tasks list views
+- Today and tomorrow tasks list views along with pinned, new, and reminders
 - Full task list (all-inclusive) with the minimum useful information per row
 - Task detail and edit modal
-- Task cloning
+- New task and cloning
 - Alerts for tasks due today or very soon
 - Alert snoozing
 - Feel good "You're caught up" message when today is clear
@@ -123,6 +123,8 @@ Assumptions and open questions:
 - **Rows per page:** is 10 the right amount to have by default?
 - **Is it fine that there's no "discard changes?"** prompt when closing an edited task?
 - **Are Complete and Archive as checkboxes in the edit form enough,** or do you want one-click buttons on the rows?
+- **Clone is only available from the edit task dialog.** Do you want the clone feature to be available as a button on each task in all views?
+- **For newly created tasks:** is 24 hours the right meaning of "new", and is a 5-second toast long enough to read?
 
 ## Where AI tooling helped, and where I overrode it
 
@@ -162,6 +164,7 @@ I overrode or corrected AI:
 - I decided to have pinned tasks as ordinary rows in the full list, since the scan already has a Pinned section. This also made it possible to have a sortable Pin column.
 - I decided archived tasks stay in the full list, with archiving done as a normal edit, so nothing would be missing from the full table data and the Status filter can hide archived tasks as needed.
 - It proposed moving the reminder to 07:00 on the deadline's day, or to the deadline itself if earlier. I chose the day before the deadline at the reminder's original time: one rule, and at least a day to act.
+- It suggested to have the clone button disabled if data is edited in the edit dialog. I overrode that suggestion because it is a legitimate case and a user should not have to enter/modify data twice.
 
 AI was wrong or inconsistent:
 

@@ -3,6 +3,7 @@ import {
   alertState,
   buildScan,
   isOverdue,
+  isNew,
   isReminderActive,
   matchesDeadline,
   matchesSearch,
@@ -200,23 +201,28 @@ describe('taskStatus and the Status filter', () => {
   })
 
   it('Open matches Not started and In progress, overdue or not', () => {
-    expect(matchesStatus(task(), 'Open')).toBe(true)
+    expect(matchesStatus(task(), 'Open', NOW)).toBe(true)
     expect(
       matchesStatus(
         task({ status: 'In progress', deadline: at(16, 9) }),
         'Open',
+        NOW,
       ),
     ).toBe(true)
-    expect(matchesStatus(task({ completedAt: at(16, 9) }), 'Open')).toBe(false)
-    expect(matchesStatus(task({ archivedAt: at(16, 9) }), 'Open')).toBe(false)
+    expect(matchesStatus(task({ completedAt: at(16, 9) }), 'Open', NOW)).toBe(
+      false,
+    )
+    expect(matchesStatus(task({ archivedAt: at(16, 9) }), 'Open', NOW)).toBe(
+      false,
+    )
   })
 
   it('In progress matches only open tasks stored as In progress', () => {
     const started = task({ status: 'In progress' })
-    expect(matchesStatus(started, 'In progress')).toBe(true)
-    expect(matchesStatus(started, 'Not started')).toBe(false)
+    expect(matchesStatus(started, 'In progress', NOW)).toBe(true)
+    expect(matchesStatus(started, 'Not started', NOW)).toBe(false)
     expect(
-      matchesStatus({ ...started, completedAt: at(16, 9) }, 'In progress'),
+      matchesStatus({ ...started, completedAt: at(16, 9) }, 'In progress', NOW),
     ).toBe(false)
   })
 })
@@ -292,5 +298,68 @@ describe('matchesSearch', () => {
     for (const q of ['TOW', 'vfa', 'supply', 'sign-off', 'high', '  '])
       expect(matchesSearch(t, q)).toBe(true)
     expect(matchesSearch(t, 'brief')).toBe(false)
+  })
+})
+
+describe('New', () => {
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 60 * 60 * 1000)
+
+  it('is an open task created in the past 24 hours, overdue or not', () => {
+    expect(isNew(task({ createdAt: hoursAgo(1) }), NOW)).toBe(true)
+    expect(isNew(task({ createdAt: hoursAgo(23.9) }), NOW)).toBe(true)
+    expect(isNew(task({ createdAt: hoursAgo(24) }), NOW)).toBe(false)
+    expect(isNew(task({ createdAt: hoursAgo(25) }), NOW)).toBe(false)
+    // Created after the clock's last tick (or a server clock slightly ahead): still new.
+    expect(isNew(task({ createdAt: hoursAgo(-0.01) }), NOW)).toBe(true)
+    expect(
+      isNew(task({ createdAt: hoursAgo(1), deadline: at(16, 20) }), NOW),
+    ).toBe(true)
+    expect(
+      isNew(task({ createdAt: hoursAgo(1), completedAt: hoursAgo(0.5) }), NOW),
+    ).toBe(false)
+    expect(
+      isNew(task({ createdAt: hoursAgo(1), archivedAt: hoursAgo(0.5) }), NOW),
+    ).toBe(false)
+  })
+
+  it('has its own scan section after Tomorrow, first match wins', () => {
+    expect(sectionOf(task({ createdAt: hoursAgo(1) }))).toBe('newTasks')
+    expect(sectionOf(task({ createdAt: hoursAgo(25) }))).toBe(null)
+    expect(
+      sectionOf(task({ createdAt: hoursAgo(1), deadline: at(17, 20) })),
+    ).toBe('today')
+    expect(
+      sectionOf(task({ createdAt: hoursAgo(1), deadline: at(18, 20) })),
+    ).toBe('tomorrow')
+    expect(sectionOf(task({ createdAt: hoursAgo(1), pinned: true }))).toBe(
+      'pinned',
+    )
+    // A reminder that has gone off: New comes before Reminders.
+    expect(
+      sectionOf(
+        task({
+          createdAt: hoursAgo(1),
+          remindAt: at(17, 9),
+          deadline: at(25, 20),
+        }),
+      ),
+    ).toBe('newTasks')
+  })
+
+  it('lists the newest first', () => {
+    const older = task({ createdAt: hoursAgo(5) })
+    const newer = task({ createdAt: hoursAgo(1) })
+    expect(ids(buildScan([older, newer], NOW).newTasks)).toEqual([
+      newer.id,
+      older.id,
+    ])
+  })
+
+  it('the New filter matches every new task, overdue ones included', () => {
+    const overdueNew = task({ createdAt: hoursAgo(1), deadline: at(16, 20) })
+    expect(matchesStatus(overdueNew, 'New', NOW)).toBe(true)
+    expect(matchesStatus(task({ createdAt: hoursAgo(30) }), 'New', NOW)).toBe(
+      false,
+    )
   })
 })

@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Task } from '../../types'
-import { TaskDialog } from './TaskDialog'
+import { toCloneValues, toFormValues } from '../../helpers/taskForm'
+import { TaskDialog, type DialogMode } from './TaskDialog'
 
 // Fixed "now": Tuesday 17 Nov 2026, 10:00 local time.
 const NOW = new Date(2026, 10, 17, 10, 0)
@@ -41,18 +42,38 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-function open(t: Task) {
+/** Renders the dialog. A task opens it in edit mode; a DialogMode opens new or clone. */
+function open(target: Task | DialogMode, cached: Task[] = []) {
+  const mode: DialogMode =
+    'kind' in target ? target : { kind: 'edit', task: target }
   const onClose = vi.fn()
+  const onClone = vi.fn()
+  const onCreated = vi.fn()
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   })
-  client.setQueryData(['tasks'], [t])
+  client.setQueryData(['tasks'], mode.kind === 'edit' ? [mode.task] : cached)
   render(
     <QueryClientProvider client={client}>
-      <TaskDialog task={t} now={NOW} onClose={onClose} />
+      <TaskDialog
+        mode={mode}
+        now={NOW}
+        onClose={onClose}
+        onClone={onClone}
+        onCreated={onCreated}
+      />
     </QueryClientProvider>,
   )
-  return { onClose, client }
+  return { onClose, onClone, onCreated, client }
+}
+
+/** The body of the one POST sent. */
+const sentCreate = () => {
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  const [url, init] = fetchMock.mock.calls[0]
+  expect(url).toBe('/api/tasks')
+  expect(init.method).toBe('POST')
+  return JSON.parse(init.body)
 }
 
 /** The body of the one PATCH sent. */
@@ -192,5 +213,157 @@ describe('TaskDialog', () => {
     await userEvent.click(screen.getByLabelText('Archived'))
     expect(screen.getByLabelText('Pinned')).toBeChecked()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('has a Clone button that passes the form as on screen, unsaved edits included, and saves nothing', async () => {
+    const t = task({ pinned: true, completedAt: at(10) })
+    const { onClone } = open(t)
+
+    await userEvent.type(screen.getByLabelText('Title'), ' (short)')
+    await userEvent.click(screen.getByRole('button', { name: 'Clone' }))
+
+    expect(onClone).toHaveBeenCalledWith({
+      ...toFormValues(t),
+      title: 'Tow bar inspection (short)',
+      status: 'Not started',
+      pinned: true,
+      completed: false,
+      archived: false,
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Clone works on an archived, locked task', async () => {
+    const { onClone } = open(task({ archivedAt: at(10) }))
+    expect(screen.getByRole('button', { name: 'Clone' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Clone' }))
+    expect(onClone).toHaveBeenCalled()
+  })
+})
+
+describe('TaskDialog: new task', () => {
+  it('saves with only a title, on Enter, and adds the task to the cache', async () => {
+    const existing = task({ id: 3 })
+    const created = task({
+      id: 99,
+      title: 'Check the tow bar adapter fits',
+      status: 'Not started',
+      priority: 'Low',
+      category: null,
+      createdAt: NOW,
+    })
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(asJson(created, {})), { status: 201 }),
+    )
+    const { onClose, onCreated, client } = open({ kind: 'new' }, [existing])
+
+    expect(screen.getByRole('heading', { name: 'New task' })).toBeVisible()
+    expect(screen.getByLabelText('Title')).toHaveFocus()
+    expect(screen.queryByLabelText('Archived')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clone' })).toBeNull()
+
+    await userEvent.type(
+      screen.getByLabelText('Title'),
+      'Check the tow bar adapter fits{Enter}',
+    )
+
+    expect(sentCreate()).toEqual({
+      title: 'Check the tow bar adapter fits',
+      description: null,
+      deadline: null,
+      remindAt: null,
+      status: 'Not started',
+      priority: 'Low',
+      category: null,
+      type: null,
+      pinned: false,
+    })
+    expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 99 }))
+    expect(onClose).toHaveBeenCalled()
+    expect(client.getQueryData<Task[]>(['tasks'])?.map((t) => t.id)).toEqual([
+      3, 99,
+    ])
+  })
+
+  it('Add task is disabled until there is a title', async () => {
+    open({ kind: 'new' })
+    expect(screen.getByRole('button', { name: 'Add task' })).toBeDisabled()
+    await userEvent.type(screen.getByLabelText('Title'), 'Brief')
+    expect(screen.getByRole('button', { name: 'Add task' })).toBeEnabled()
+  })
+
+  it('notes a deadline that has passed', async () => {
+    open({ kind: 'new' })
+    await userEvent.type(screen.getByLabelText('Deadline date'), '2026-11-16')
+    expect(
+      screen.getByText('This deadline has passed: it will show as overdue.'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the dialog open with a plain message when the database refuses', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'remind_not_after_deadline' }), {
+        status: 422,
+      }),
+    )
+    const { onClose, onCreated } = open({ kind: 'new' })
+    await userEvent.type(screen.getByLabelText('Title'), 'Brief{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "The reminder can't be after the deadline. Nothing was saved.",
+    )
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+})
+
+describe('TaskDialog: clone', () => {
+  // Last week's roll-up: due Fri 13 Nov 15:00, reminder Thu 12 Nov 07:00.
+  const rollUp = task({
+    title: 'Status roll-up to the squadron',
+    deadline: at(13, 15),
+    remindAt: at(12, 7),
+    completedAt: at(13, 14),
+  })
+  const cloneOf = (t: Task): DialogMode => ({
+    kind: 'clone',
+    values: toCloneValues(toFormValues(t)),
+  })
+
+  it('opens with the copied values, focus on the Deadline date', () => {
+    open(cloneOf(rollUp))
+    expect(screen.getByRole('heading', { name: 'Clone task' })).toBeVisible()
+    expect(screen.getByLabelText('Title')).toHaveValue(
+      'Status roll-up to the squadron',
+    )
+    expect(screen.getByLabelText('Status')).toHaveValue('Not started')
+    expect(screen.getByLabelText('Completed')).not.toBeChecked()
+    expect(screen.getByLabelText('Deadline date')).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Add task' })).toBeEnabled()
+  })
+
+  it('moving the deadline later leaves the reminder', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(asJson(rollUp, { id: 50 })), { status: 201 }),
+    )
+    open(cloneOf(rollUp))
+    await userEvent.clear(screen.getByLabelText('Deadline date'))
+    await userEvent.type(screen.getByLabelText('Deadline date'), '2026-11-20')
+    expect(screen.queryByText(/Reminder moves to/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Add task' }))
+    const body = sentCreate()
+    expect(body.deadline).toBe(at(20, 15).toISOString())
+    expect(body.remindAt).toBe(at(12, 7).toISOString())
+  })
+
+  it('moving the deadline before the reminder moves it, and says so', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(asJson(rollUp, { id: 50 })), { status: 201 }),
+    )
+    open(cloneOf(rollUp))
+    await userEvent.clear(screen.getByLabelText('Deadline date'))
+    await userEvent.type(screen.getByLabelText('Deadline date'), '2026-11-11')
+    expect(screen.getByText(/Reminder moves to/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Add task' }))
+    expect(sentCreate().remindAt).toBe(at(10, 7).toISOString())
   })
 })

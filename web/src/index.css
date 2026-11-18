@@ -1,5 +1,19 @@
 @import 'tailwindcss';
 
+/* Toasts: shown for 5 seconds, fading out over the last half second. */
+@theme {
+  --animate-toast: toast 5s forwards;
+  @keyframes toast {
+    0%,
+    90% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
 /* A clear focus ring for keyboard users on every button, field and tab. */
 @layer base {
   :focus-visible {

@@ -19,6 +19,7 @@ import {
 import { day, when } from '../../helpers/formatDates'
 import {
   alertState,
+  isNew,
   matchesDeadline,
   matchesSearch,
   matchesStatus,
@@ -28,6 +29,7 @@ import {
   type TaskStatus,
 } from '../../helpers/taskHelpers'
 import type { Task } from '../../types'
+import { NewTag } from '../shared/NewTag'
 import { Tag } from '../shared/Tag'
 import { TitleButton } from '../shared/TitleButton'
 import { TaskTableToolbar } from './TaskTableToolbar'
@@ -97,13 +99,14 @@ function makeColumns(now: Date, onOpen: (id: number) => void) {
       sortFn: numeric,
       // The Status dropdown sets this filter.
       filterFn: (row, _id, value: StatusFilter) =>
-        matchesStatus(row.original, value),
+        matchesStatus(row.original, value, now),
       cell: ({ row }) => (
         <span className="flex flex-wrap items-center gap-1">
           {taskStatus(row.original)}
           {alertState(row.original, now) === 'overdue' && (
             <Tag className="bg-red-600 text-white">Overdue</Tag>
           )}
+          {isNew(row.original, now) && <NewTag />}
         </span>
       ),
     }),

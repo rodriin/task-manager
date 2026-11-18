@@ -122,4 +122,24 @@ describe('TaskTable', () => {
     )
     expect(titles()).toHaveLength(3)
   })
+
+  it('tags new tasks, next to Overdue when both, and the New filter lists them all', async () => {
+    const hourAgo = new Date(NOW.getTime() - 60 * 60 * 1000)
+    const tasks = [
+      task(1, { createdAt: hourAgo }), // new
+      task(2, { createdAt: hourAgo, deadline: at(16) }), // new and overdue
+      task(3), // old
+    ]
+    render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
+    const statusCell = (row: number) =>
+      within(screen.getAllByRole('row')[row]).getAllByRole('cell')[2]
+
+    expect(within(statusCell(1)).getByText('New')).toBeVisible()
+    expect(within(statusCell(2)).getByText('New')).toBeVisible()
+    expect(within(statusCell(2)).getByText('Overdue')).toBeVisible()
+    expect(within(statusCell(3)).queryByText('New')).toBeNull()
+
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'New')
+    expect(titles()).toEqual(['Task 1', 'Task 2'])
+  })
 })

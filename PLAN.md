@@ -8,8 +8,9 @@ Working plan for the build, split into parts. A part is a unit of planned work, 
 | 2 | API routes: list, create, update | Done |
 | 3 | UI: the scan (Pinned, Today, Tomorrow, Reminders), read-only | Done |
 | 4 | UI: All tasks tab, a full table with search, filters, sort and pages | Done |
-| 5 | UI: task detail and edit, in a dialog | Built and verified, ready to commit |
-| 6+ | Not planned yet | — |
+| 5 | UI: task detail and edit, in a dialog | Done |
+| 6 | UI: new task and clone, in the same dialog | Built and verified, ready to commit |
+| 7+ | Not planned yet | — |
 
 ---
 
@@ -457,3 +458,112 @@ Tests: shift by the same amount across midnight and a DST change; no shift when 
 - [x] `docker compose up --build` serves it at <http://localhost:8000>; then `docker compose down -v` to re-seed clean demo data.
 
 Verified 2026-11-18 at 10:48 New York time, driven in headless Chrome against `docker compose up --build`, then re-seeded with `down -v`.
+
+---
+
+## Part 6: New task and clone
+
+**Goal:** a task can be added in seconds from either tab, and a rhythm item (Monday brief, Friday roll-up, quarterly paperwork) can be cloned from last time's copy. A new task is easy to see for its first 24 hours, so it's never lost and never added twice. Clone is item 4 of the priority list. Both reuse the Part 5 dialog and form rules; the API already has `POST /api/tasks`, so there's no API change.
+
+**Out of scope:** an always-visible capture box, a keyboard shortcut for New task, Clone buttons on rows, repeating tasks or templates, snooze, the alert banner, remembering collapsed sections across reloads, returning focus to the original title after a clone closes (deferred).
+
+### Rules
+
+- **One dialog, three modes.** `TaskDialog` takes a mode: **edit** (Part 5, unchanged), **new** (empty form) and **clone** (filled from the edit form). New and clone save with one `POST /api/tasks`.
+- **New task button** in the header, next to the tabs, on both tabs. Empty form (Not started, Low), focus on Title. Only Title is required and Enter saves: that's the quick capture.
+- **Clone** is a button in the edit dialog's footer (left), outlined blue (a main action that isn't Save, and doesn't look like Cancel), outside the archived lock, so done or archived tasks can be cloned.
+  - **Clones what's on screen, unsaved edits included. The original is not saved or changed.**
+  - Replaces the edit dialog with "Clone task", focus on the Deadline date.
+  - **Copies** title (no "Copy of"), description, priority, category, type, deadline, reminder. **Copies Pinned** too. **Resets** status to Not started; Completed, Archived and snooze start empty.
+  - **Reminder: the edit rule.** The copied deadline counts as the old one, so the reminder only moves when the new deadline lands before it ("Reminder moves to …"). A reminder typed by hand is never moved; after the deadline it's an error.
+- **New and clone forms** have no Archived checkbox and no facts line. Completed is there (log past work: `completedAt` = now). Save reads "Add task". A past deadline is allowed, with the note "This deadline has passed: it will show as overdue." (not when Completed is ticked).
+- **Form warnings are amber, errors red.** The "Reminder moves to …", "This deadline has passed …" and "Snooze ends …" notes were grey and easy to miss.
+- **After saving:** the task is appended to the `tasks` cache, the dialog closes, and a toast shows.
+- **Toast:** "New task created: Check the tow bar adapter fits". Green (border and light background, like a completed row: success), fixed at the top right, fades out after 5 seconds, no close button. Several quick creates stack. `role="status"`, so it's read out.
+- **New = open and created in the past 24 hours.** Derived from `createdAt`, never stored. Overdue doesn't change it.
+  - **"New" tag**, violet (`bg-violet-100 text-violet-800`). Violet means new and nothing else.
+    - **Scan:** always shown on a new task, overdue or not, next to the priority tag (High).
+    - **Table Status cell:** next to Overdue; a task that is both shows both tags.
+  - **"New" scan section, right after Tomorrow:** new tasks not in Pinned, Today or Tomorrow, newest first, hidden when empty. So the order is Pinned, Today, Tomorrow, New, Reminders, still first match wins: a new task whose reminder has gone off sits in New (still amber). Its rows show the tag too; one rule, no exception.
+  - **"New" in the Status filter**, after Open: every new task, overdue ones included, so filtering never hides one he just added
+  - The seed's newest task is two days old, so nothing is New on a fresh seed; the first task added in the demo shows it all.
+- **Collapsible scan sections.** Each heading is a native `<details>`/`<summary>` with a 20px chevron: keyboard and screen-reader support built in, no state code. All open by default. The scan stays mounted while hidden (like the table), so what's collapsed survives a tab switch; a reload opens them all again. The count stays in the heading, so a collapsed section still says how many tasks it holds.
+- **New tasks land at the end of All tasks** (id order). The tag and the New filter find them.
+- **Focus after a clone closes** falls back to the page (the Clone button is gone). Deferred.
+
+### Layout
+
+```
+            ┌──────────────────────────────────────────────┐
+            │ New task created: Check the tow bar adapter  │  ← top, fades after 5 s
+            └──────────────────────────────────────────────┘
+  Maverick                          Wednesday 18 November, 10:12
+  [Today] [All tasks]                               [New task]
+
+  ▾ Today  Wed 18 Nov (3 Tasks)
+     Inspect the tow bar adapter   High  New   Overdue …
+  ▾ Tomorrow  Thu 19 Nov (2 Tasks)
+  ▸ New (1 Task)                                    ← collapsed
+  ▾ Reminders (1 Task)
+
+Edit dialog footer:   [Clone]                 [Cancel]  [Save]
+Clone dialog:         "Clone task", the edit fields minus Archived, [Cancel] [Add task]
+```
+
+### 6.1 API: `web/src/api/client.ts`
+
+- `createTask(body)`: `POST /api/tasks`, returns the parsed task. `TaskCreateBody` matches `TaskCreate` in `api/schemas.py`.
+
+### 6.2 Task helpers: `web/src/helpers/taskHelpers.ts` (+ tests)
+
+- `isNew(task, now)`: open and created in the past 24 hours (overdue or not).
+- `buildScan` gets `newTasks`, between Tomorrow and Reminders in the first-match order; newest first.
+- `STATUS_FILTERS` gets `'New'`; `matchesStatus` uses `isNew`.
+- Tests: created 1 hour ago → new; 25 hours ago → not; overdue → still new; completed or archived → not; a new task due today is in Today, not New; a new task with a reminder that has gone off is in New, not Reminders; newest first; the New filter includes an overdue new task.
+
+### 6.3 Form helpers: `web/src/helpers/taskForm.ts` (+ tests)
+
+- `EMPTY_VALUES`; `toCloneValues(values)`: the edit form's values with Not started and Completed, Archived false (Pinned kept).
+- Shared `readForm(values)` pulled out of `planSave` (title, description, dates, errors). `planSave` keeps its behaviour and tests.
+- `planCreate(values, initial, now)`: `{ body, errors, reminderMovesTo, deadlinePassed }`. Reminder: when the deadline was edited and the reminder wasn't, `shiftReminder(initial deadline, new deadline, initial reminder)`.
+- Tests: title only gives the defaults; empty title is an error; clone keeps the work fields (unsaved edits included) and resets the state; moving a clone's deadline later leaves the reminder; before the reminder shifts it; a hand-typed reminder after the deadline is an error; `deadlinePassed`, not when Completed; Completed sends `completedAt`.
+
+### 6.4 Dialog: `web/src/components/dialog/TaskDialog.tsx` (+ tests)
+
+- `mode: { kind: 'edit'; task } | { kind: 'new' } | { kind: 'clone'; values }`, plus `onClone(values)` and `onCreated(task)`.
+- Small branches: heading, facts and locked line, Archived, Clone button, plan, mutation, Save label, first focus (`DateTimeField` forwards a ref to its date input for clone).
+- Tests: title + Enter posts once and appends to the cache, `onCreated` called; no Archived in new; Clone after an edit passes the edited values and sends nothing; the clone opens Not started, Pinned kept, focus on Deadline date; the reminder note and POST when the deadline moves before it; a 422 keeps the dialog open.
+
+### 6.5 Scan, table and toast
+
+- `scan/TaskSection.tsx`: `<details open>` with the heading in `<summary>`; New section added in `App`.
+- `scan/TaskLine.tsx`: the New tag (when `isNew`) next to the High tag, overdue or not. `table/TaskTable.tsx`: the New tag in the Status cell, next to Overdue when both.
+- `shared/Toasts.tsx`: the stack; `App` keeps a list of `{ key, title }` and removes each after 5 seconds.
+- Tests: TaskLine: a new overdue task shows New and Overdue. TaskTable: a new task shows New; a new overdue task shows New and Overdue; the New filter lists it. TaskSection: collapsing hides the tasks and keeps the count.
+
+### 6.6 Wiring: `web/src/App.tsx`
+
+- `openTaskId` becomes `dialog: { kind: 'edit'; id } | { kind: 'new' } | { kind: 'clone'; values } | null`, with a `key` per mode so each opens fresh.
+- New task button; `onClone` switches edit to clone; `onCreated` adds a toast.
+- The scan panel stays mounted with `hidden`, like the table.
+
+### 6.7 Verify
+
+- [x] `npm test` (90 tests), `npm run lint`, `npm run build` pass.
+- [x] Fresh seed: no New section, no New tags.
+- [x] From Today: New task, "Check the tow bar adapter fits", Enter: the toast shows and fades; the task is in New with the violet tag.
+- [x] Three quick creates: three toasts stacked, each fades.
+- [x] New task due today: in Today with the New tag, not in New. Due yesterday: the "has passed" note, then red in Today with the New tag; in All tasks it shows New and Overdue, and the New filter lists it.
+- [x] Log past work (deadline last week, Completed): no note, green Completed in the table, no New tag.
+- [x] All tasks: Status filter New lists every task added in the demo, overdue ones too.
+- [x] Clone "Status roll-up to the squadron" (seed id 51, completed): copied fields, Not started, focus on Deadline date. Deadline a week later: reminder stays. Deadline before the reminder: "Reminder moves to …". Add task: toast; the old one unchanged.
+- [x] Clone "Quarterly currency paperwork" (seed id 56, archived) without unticking Archived: the clone is editable and not archived.
+- [x] Edit a title and deadline, Clone without saving: the clone has them, the original doesn't.
+- [x] Collapse Tomorrow: the tasks hide, the count stays; switch to All tasks and back: still collapsed. Reload: all open.
+- [x] Keyboard: Tab to New task, Enter, type, Enter; Enter or Space on a section heading collapses it.
+- [x] Phone width (390px): New task, tabs and toasts fit without sideways scroll.
+- [x] `docker compose up --build` serves it at <http://localhost:8000>; then `docker compose down -v` to re-seed.
+
+Also fixed here: `isNew` first had a lower bound (created at or before `now`). The clock ticks once a minute, so a task created after the last tick looked a few seconds in the future and got no New tag; the bound is gone.
+
+Verified 2026-11-18 at 14:55 New York time, driven in headless Chrome against `docker compose up --build`, then re-seeded with `down -v`.

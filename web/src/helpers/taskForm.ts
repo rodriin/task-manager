@@ -2,7 +2,7 @@
 // The form holds strings and booleans (what the inputs hold); `planSave` turns them into the
 // PATCH to send, the errors to show, and the notes about what else the save will change.
 import { format, set, subDays } from 'date-fns'
-import type { TaskPatch } from '../api/client'
+import type { TaskCreateBody, TaskPatch } from '../api/client'
 import type { Priority, Status, Task } from '../types'
 import { isSnoozed } from './taskHelpers'
 
@@ -148,6 +148,88 @@ const sameTime = (a: Date | null, b: Date | null) =>
 
 const BAD_TIME = 'Enter a 24-hour time, for example 20:00.'
 
+/** What the form holds, read and checked. Shared by edit (planSave) and create (planCreate). */
+interface ReadForm {
+  title: string
+  description: string | null
+  deadline: Date | null
+  remindAt: Date | null
+  deadlineEdited: boolean
+  reminderEdited: boolean
+  /** Set when the reminder moves because the deadline moved before it. */
+  reminderMovesTo: Date | null
+  errors: FormErrors
+}
+
+/**
+ * Reads the form against where it started (`initial`, and the dates as stored or copied).
+ * Only a field the user touched counts as edited. A reminder typed by hand is never moved;
+ * one after the deadline is an error.
+ */
+function readForm(
+  values: FormValues,
+  initial: FormValues,
+  stored: { deadline: Date | null; remindAt: Date | null },
+): ReadForm {
+  const errors: FormErrors = {}
+
+  const title = values.title.trim()
+  if (title === '') errors.title = 'A title is needed.'
+  else if (title.length > TITLE_MAX)
+    errors.title = `At most ${TITLE_MAX} characters.`
+
+  if (values.description.length > DESCRIPTION_MAX)
+    errors.description = `At most ${DESCRIPTION_MAX} characters.`
+  const description =
+    values.description.trim() === '' ? null : values.description
+
+  const deadlineEdited =
+    values.deadlineDate !== initial.deadlineDate ||
+    values.deadlineTime !== initial.deadlineTime
+  const reminderEdited =
+    values.remindDate !== initial.remindDate ||
+    values.remindTime !== initial.remindTime
+  if (values.deadlineDate && !normalizeTime(values.deadlineTime))
+    errors.deadline = BAD_TIME
+  if (values.remindDate && !normalizeTime(values.remindTime))
+    errors.remindAt = BAD_TIME
+
+  const deadline = deadlineEdited
+    ? parseLocal(values.deadlineDate, values.deadlineTime)
+    : stored.deadline
+  let remindAt = reminderEdited
+    ? parseLocal(values.remindDate, values.remindTime)
+    : stored.remindAt
+
+  let reminderMovesTo: Date | null = null
+  if (deadlineEdited && !reminderEdited && !errors.deadline) {
+    const shift = shiftReminder(stored.deadline, deadline, stored.remindAt)
+    if (shift.moved) {
+      remindAt = shift.remindAt
+      reminderMovesTo = shift.remindAt
+    }
+  }
+  if (
+    !errors.deadline &&
+    !errors.remindAt &&
+    deadline &&
+    remindAt &&
+    remindAt > deadline
+  ) {
+    errors.remindAt = "The reminder can't be after the deadline."
+  }
+  return {
+    title,
+    description,
+    deadline,
+    remindAt,
+    deadlineEdited,
+    reminderEdited,
+    reminderMovesTo,
+    errors,
+  }
+}
+
 /**
  * Works out what a save would send, from the stored task and the form.
  *
@@ -168,19 +250,15 @@ export function planSave(task: Task, values: FormValues, now: Date): SavePlan {
   if (task.archivedAt !== null && values.archived) return plan
 
   const initial = toFormValues(task)
-  const { patch, errors } = plan
+  const form = readForm(values, initial, task)
+  const { patch } = plan
+  plan.errors = form.errors
+  plan.reminderMovesTo = form.reminderMovesTo
+  const { errors } = form
 
-  const title = values.title.trim()
-  if (title === '') errors.title = 'A title is needed.'
-  else if (title.length > TITLE_MAX)
-    errors.title = `At most ${TITLE_MAX} characters.`
-  else if (title !== task.title) patch.title = title
-
-  if (values.description.length > DESCRIPTION_MAX) {
-    errors.description = `At most ${DESCRIPTION_MAX} characters.`
-  } else if (values.description !== initial.description) {
-    patch.description =
-      values.description.trim() === '' ? null : values.description
+  if (!errors.title && form.title !== task.title) patch.title = form.title
+  if (!errors.description && values.description !== initial.description) {
+    patch.description = form.description
   }
 
   if (values.status !== task.status) patch.status = values.status
@@ -190,54 +268,19 @@ export function planSave(task: Task, values: FormValues, now: Date): SavePlan {
   const type = values.type || null
   if (type !== task.type) patch.type = type
 
-  // Dates: only a field the user touched counts as changed.
-  const deadlineEdited =
-    values.deadlineDate !== initial.deadlineDate ||
-    values.deadlineTime !== initial.deadlineTime
-  const reminderEdited =
-    values.remindDate !== initial.remindDate ||
-    values.remindTime !== initial.remindTime
-  if (values.deadlineDate && !normalizeTime(values.deadlineTime))
-    errors.deadline = BAD_TIME
-  if (values.remindDate && !normalizeTime(values.remindTime))
-    errors.remindAt = BAD_TIME
-
-  const deadline = deadlineEdited
-    ? parseLocal(values.deadlineDate, values.deadlineTime)
-    : task.deadline
-  let remindAt = reminderEdited
-    ? parseLocal(values.remindDate, values.remindTime)
-    : task.remindAt
-
-  if (deadlineEdited && !reminderEdited && !errors.deadline) {
-    const shift = shiftReminder(task.deadline, deadline, task.remindAt)
-    if (shift.moved) {
-      remindAt = shift.remindAt
-      plan.reminderMovesTo = shift.remindAt
-    }
-  }
   if (
+    form.deadlineEdited &&
     !errors.deadline &&
-    !errors.remindAt &&
-    deadline &&
-    remindAt &&
-    remindAt > deadline
+    !sameTime(form.deadline, task.deadline)
   ) {
-    errors.remindAt = "The reminder can't be after the deadline."
+    patch.deadline = form.deadline
   }
   if (
-    deadlineEdited &&
-    !errors.deadline &&
-    !sameTime(deadline, task.deadline)
-  ) {
-    patch.deadline = deadline
-  }
-  if (
-    (reminderEdited || plan.reminderMovesTo) &&
+    (form.reminderEdited || form.reminderMovesTo) &&
     !errors.remindAt &&
-    !sameTime(remindAt, task.remindAt)
+    !sameTime(form.remindAt, task.remindAt)
   ) {
-    patch.remindAt = remindAt
+    patch.remindAt = form.remindAt
   }
 
   if (values.pinned !== task.pinned) patch.pinned = values.pinned
@@ -258,6 +301,84 @@ export function planSave(task: Task, values: FormValues, now: Date): SavePlan {
     plan.snoozeEnds = isSnoozed(task, now)
   }
   return plan
+}
+
+/** The new-task form: everything empty, the API's defaults for status and priority. */
+export const EMPTY_VALUES: FormValues = {
+  title: '',
+  description: '',
+  status: 'Not started',
+  priority: 'Low',
+  category: '',
+  type: '',
+  deadlineDate: '',
+  deadlineTime: '',
+  remindDate: '',
+  remindTime: '',
+  pinned: false,
+  completed: false,
+  archived: false,
+}
+
+/**
+ * The clone form, from the edit form as it is on screen (unsaved edits included).
+ * It copies the work (title, description, priority, category, type, dates) and Pinned, and
+ * resets the state: the copy hasn't been started, completed or archived. (An archived task is
+ * never pinned, so its clone isn't either.)
+ */
+export function toCloneValues(values: FormValues): FormValues {
+  return {
+    ...values,
+    status: 'Not started',
+    completed: false,
+    archived: false,
+  }
+}
+
+export interface CreatePlan {
+  body: TaskCreateBody
+  errors: FormErrors
+  /** Set when the save will move the reminder (the deadline moved before it). */
+  reminderMovesTo: Date | null
+  /** The deadline has already passed and the task isn't ticked Completed: it will be overdue. */
+  deadlinePassed: boolean
+}
+
+/**
+ * Works out what a create (new task or clone) would send. `initial` is the form it opened
+ * with: the copied dates count as the old ones, so the reminder follows the edit rule (it only
+ * moves when the new deadline lands before it). Every field is sent.
+ */
+export function planCreate(
+  values: FormValues,
+  initial: FormValues,
+  now: Date,
+): CreatePlan {
+  const form = readForm(values, initial, {
+    deadline: parseLocal(initial.deadlineDate, initial.deadlineTime),
+    remindAt: parseLocal(initial.remindDate, initial.remindTime),
+  })
+  return {
+    body: {
+      title: form.title,
+      description: form.description,
+      deadline: form.deadline,
+      remindAt: form.remindAt,
+      status: values.status,
+      priority: values.priority,
+      category: values.category || null,
+      type: values.type || null,
+      pinned: values.pinned,
+      ...(values.completed ? { completedAt: now } : {}),
+    },
+    errors: form.errors,
+    reminderMovesTo: form.reminderMovesTo,
+    deadlinePassed:
+      !values.completed &&
+      !form.errors.deadline &&
+      form.deadline !== null &&
+      form.deadline < now,
+  }
 }
 
 export const hasErrors = (errors: FormErrors) => Object.keys(errors).length > 0

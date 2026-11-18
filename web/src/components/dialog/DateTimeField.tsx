@@ -1,6 +1,6 @@
 import { normalizeTime } from '../../helpers/taskForm'
 import { FieldError } from './FieldError'
-import { CLEAR_BUTTON, FIELD } from './styles'
+import { CLEAR_BUTTON, FIELD, WARNING } from './styles'
 
 /**
  * A native date picker plus a typed 24-hour time (the browser's time picker shows AM/PM on a
@@ -14,6 +14,7 @@ export function DateTimeField({
   defaultTime,
   error,
   note,
+  dateRef,
   onChange,
 }: {
   id: string
@@ -23,6 +24,8 @@ export function DateTimeField({
   defaultTime: string
   error?: string
   note?: string
+  /** The date input, so the dialog can put focus on it (a clone opens on the Deadline date). */
+  dateRef?: React.Ref<HTMLInputElement>
   onChange: (date: string, time: string) => void
 }) {
   const describedBy = [error && `${id}-error`, note && `${id}-note`]
@@ -36,6 +39,7 @@ export function DateTimeField({
           {label} date
         </label>
         <input
+          ref={dateRef}
           id={`${id}-date`}
           type="date"
           value={date}
@@ -78,11 +82,7 @@ export function DateTimeField({
       </div>
       <FieldError id={`${id}-error`} message={error} />
       {note && (
-        <p
-          id={`${id}-note`}
-          className="text-sm text-gray-700"
-          aria-live="polite"
-        >
+        <p id={`${id}-note`} className={WARNING} aria-live="polite">
           {note}
         </p>
       )}

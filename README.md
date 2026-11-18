@@ -67,7 +67,7 @@ In priority order. Anything beyond these will be built only if time allowed; see
 1. Today and tomorrow view: what is now and what is next
 2. Full task list with the minimum useful information per row
 3. Task detail and edit
-4. Clone a task (first answer to the recurring items)
+4. New task and clone (first answer to the recurring items)
 5. Alert for tasks that are overdue, due very soon, or past their reminder time
 6. Snooze an alert
 7. "You're caught up" message when today is clear
@@ -173,8 +173,8 @@ All timestamps are stored in UTC and shown in the viewer's local time.
         └── components/
             ├── scan/        # the Today screen: TaskSection and TaskLine (one task in a section)
             ├── table/       # the All tasks table and its toolbar
-            ├── dialog/      # task detail and edit (TaskDialog) and its form fields
-            └── shared/      # pieces used by more than one view (Tag, TitleButton)
+            ├── dialog/      # task detail, edit, new task and clone (TaskDialog) and its form fields
+            └── shared/      # pieces used by more than one view (Tag, NewTag, TitleButton, Toasts)
 ```
 
 ## Local development

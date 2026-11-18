@@ -1,4 +1,4 @@
-/** A small label next to a task title (High, In progress, Overdue). */
+/** A small label next to a task title (High, In progress, New, Overdue). */
 export function Tag({
   children,
   className,

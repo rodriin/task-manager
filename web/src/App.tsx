@@ -1,14 +1,17 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
 import { fetchMe, fetchTasks } from './api/client'
 import { TaskDialog } from './components/dialog/TaskDialog'
 import { PRIMARY_BUTTON } from './components/dialog/styles'
 import { TOAST_MS, Toasts, type Toast } from './components/shared/Toasts'
+import { PrintCard, type PrintSection } from './components/scan/PrintCard'
 import { TaskSection } from './components/scan/TaskSection'
+import { TodayClear } from './components/scan/TodayClear'
 import { TaskTable } from './components/table/TaskTable'
 import type { FormValues } from './helpers/taskForm'
-import { buildScan } from './helpers/taskHelpers'
+import { buildScan, doneToday, todayState } from './helpers/taskHelpers'
 import type { Task } from './types'
 import { useNow } from './useNow'
 
@@ -68,159 +71,179 @@ function App() {
   const tasks = useQuery({ queryKey: ['tasks'], queryFn: fetchTasks })
   const me = useQuery({ queryKey: ['me'], queryFn: fetchMe })
   const scan = tasks.data ? buildScan(tasks.data, now) : null
+
+  // Print one scan section as an index card. flushSync puts the card on the page before the
+  // print dialog opens; afterprint takes it away again.
+  const [printing, setPrinting] = useState<PrintSection | null>(null)
+  const printSection = (section: PrintSection) => {
+    flushSync(() => setPrinting(section))
+    window.print()
+  }
+  useEffect(() => {
+    const done = () => setPrinting(null)
+    window.addEventListener('afterprint', done)
+    return () => window.removeEventListener('afterprint', done)
+  }, [])
+
+  // The scan, top to bottom. Pinned, New and Reminders hide when empty; an empty Today says
+  // whether he's caught up.
+  const sections = scan
+    ? [
+        { title: 'Pinned', tasks: scan.pinned, hideWhenEmpty: true },
+        {
+          title: 'Today',
+          subtitle: format(now, 'EEE d MMM'),
+          tasks: scan.today,
+          empty: (
+            <TodayClear
+              state={todayState(tasks.data ?? [], now)}
+              done={doneToday(tasks.data ?? [], now)}
+            />
+          ),
+        },
+        {
+          title: 'Tomorrow',
+          subtitle: format(addDays(now, 1), 'EEE d MMM'),
+          tasks: scan.tomorrow,
+        },
+        { title: 'New', tasks: scan.newTasks, hideWhenEmpty: true },
+        { title: 'Reminders', tasks: scan.reminders, hideWhenEmpty: true },
+      ]
+    : []
   const editTask =
     dialog?.kind === 'edit'
       ? tasks.data?.find((t) => t.id === dialog.id)
       : undefined
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      {/* The table needs more width than the scan. */}
-      <main
-        className={`mx-auto flex flex-col gap-6 px-4 py-6 ${tab === 'all' ? 'max-w-7xl' : 'max-w-2xl'}`}
-      >
-        <header className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between">
-            <h1 className="text-xl font-bold">
-              {me.data ? me.data.displayName : 'Task Manager'}
-            </h1>
-            <span className="text-sm text-gray-500">
-              {format(now, 'EEEE d MMMM, HH:mm')}
-            </span>
-          </div>
-          <div className="flex items-end justify-between gap-2 border-b border-gray-200">
+    <>
+      {/* On paper, only the card being printed. */}
+      <div className="min-h-screen bg-gray-50 text-gray-900 print:hidden">
+        {/* The table needs more width than the scan. */}
+        <main
+          className={`mx-auto flex flex-col gap-6 px-4 py-6 ${tab === 'all' ? 'max-w-7xl' : 'max-w-2xl'}`}
+        >
+          <header className="flex flex-col gap-3">
+            <div className="flex items-baseline justify-between">
+              <h1 className="text-xl font-bold">
+                {me.data ? me.data.displayName : 'Task Manager'}
+              </h1>
+              <span className="text-sm text-gray-500">
+                {format(now, 'EEEE d MMMM, HH:mm')}
+              </span>
+            </div>
+            <div className="flex items-end justify-between gap-2 border-b border-gray-200">
+              <div
+                role="tablist"
+                aria-label="Views"
+                onKeyDown={onTabKey}
+                className="flex gap-1"
+              >
+                {TABS.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    id={`tab-${id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === id}
+                    aria-controls={`panel-${id}`}
+                    tabIndex={tab === id ? 0 : -1}
+                    onClick={() => setTab(id)}
+                    className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${
+                      tab === id
+                        ? 'border-gray-900 text-gray-900'
+                        : 'border-transparent text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDialog({ kind: 'new' })}
+                className={`${PRIMARY_BUTTON} mb-1 text-sm`}
+              >
+                New task
+              </button>
+            </div>
+          </header>
+          <Toasts toasts={toasts} />
+
+          {tasks.isPending && <p>Loading tasks…</p>}
+          {tasks.isError && (
+            <p className="text-red-700">
+              Couldn't load tasks: {tasks.error.message}
+            </p>
+          )}
+          {/* Both panels stay mounted while hidden: the table keeps its search, filters, sort and
+            page, and the scan keeps which sections are collapsed. */}
+          {scan && (
             <div
-              role="tablist"
-              aria-label="Views"
-              onKeyDown={onTabKey}
-              className="flex gap-1"
+              role="tabpanel"
+              id="panel-today"
+              aria-labelledby="tab-today"
+              hidden={tab !== 'today'}
+              className="flex flex-col gap-6"
             >
-              {TABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  id={`tab-${id}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  aria-controls={`panel-${id}`}
-                  tabIndex={tab === id ? 0 : -1}
-                  onClick={() => setTab(id)}
-                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${
-                    tab === id
-                      ? 'border-gray-900 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  {label}
-                </button>
+              {sections.map(({ title, subtitle, tasks, ...rest }) => (
+                <TaskSection
+                  key={title}
+                  title={title}
+                  subtitle={subtitle}
+                  tasks={tasks}
+                  now={now}
+                  onOpen={openTask}
+                  onPrint={() => printSection({ title, subtitle, tasks })}
+                  {...rest}
+                />
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => setDialog({ kind: 'new' })}
-              className={`${PRIMARY_BUTTON} mb-1 text-sm`}
+          )}
+          {tasks.data && (
+            <div
+              role="tabpanel"
+              id="panel-all"
+              aria-labelledby="tab-all"
+              hidden={tab !== 'all'}
             >
-              New task
-            </button>
-          </div>
-        </header>
-        <Toasts toasts={toasts} />
-
-        {tasks.isPending && <p>Loading tasks…</p>}
-        {tasks.isError && (
-          <p className="text-red-700">
-            Couldn't load tasks: {tasks.error.message}
-          </p>
-        )}
-        {/* Both panels stay mounted while hidden: the table keeps its search, filters, sort and
-            page, and the scan keeps which sections are collapsed. */}
-        {scan && (
-          <div
-            role="tabpanel"
-            id="panel-today"
-            aria-labelledby="tab-today"
-            hidden={tab !== 'today'}
-            className="flex flex-col gap-6"
-          >
-            <TaskSection
-              title="Pinned"
-              tasks={scan.pinned}
+              <TaskTable tasks={tasks.data} now={now} onOpen={openTask} />
+            </div>
+          )}
+          {/* A key per task and mode, so each dialog opens fresh (edit 7, then clone of 7). */}
+          {editTask && (
+            <TaskDialog
+              key={`edit-${editTask.id}`}
+              mode={{ kind: 'edit', task: editTask }}
               now={now}
-              onOpen={openTask}
-              hideWhenEmpty
+              onClose={() => setDialog(null)}
+              onClone={(values) =>
+                setDialog({ kind: 'clone', id: editTask.id, values })
+              }
             />
-            <TaskSection
-              title="Today"
-              subtitle={format(now, 'EEE d MMM')}
-              tasks={scan.today}
+          )}
+          {dialog?.kind === 'new' && (
+            <TaskDialog
+              key="new"
+              mode={{ kind: 'new' }}
               now={now}
-              onOpen={openTask}
+              onClose={() => setDialog(null)}
+              onCreated={onCreated}
             />
-            <TaskSection
-              title="Tomorrow"
-              subtitle={format(addDays(now, 1), 'EEE d MMM')}
-              tasks={scan.tomorrow}
+          )}
+          {dialog?.kind === 'clone' && (
+            <TaskDialog
+              key={`clone-${dialog.id}`}
+              mode={{ kind: 'clone', values: dialog.values }}
               now={now}
-              onOpen={openTask}
+              onClose={() => setDialog(null)}
+              onCreated={onCreated}
             />
-            <TaskSection
-              title="New"
-              tasks={scan.newTasks}
-              now={now}
-              onOpen={openTask}
-              hideWhenEmpty
-            />
-            <TaskSection
-              title="Reminders"
-              tasks={scan.reminders}
-              now={now}
-              onOpen={openTask}
-              hideWhenEmpty
-            />
-          </div>
-        )}
-        {tasks.data && (
-          <div
-            role="tabpanel"
-            id="panel-all"
-            aria-labelledby="tab-all"
-            hidden={tab !== 'all'}
-          >
-            <TaskTable tasks={tasks.data} now={now} onOpen={openTask} />
-          </div>
-        )}
-        {/* A key per task and mode, so each dialog opens fresh (edit 7, then clone of 7). */}
-        {editTask && (
-          <TaskDialog
-            key={`edit-${editTask.id}`}
-            mode={{ kind: 'edit', task: editTask }}
-            now={now}
-            onClose={() => setDialog(null)}
-            onClone={(values) =>
-              setDialog({ kind: 'clone', id: editTask.id, values })
-            }
-          />
-        )}
-        {dialog?.kind === 'new' && (
-          <TaskDialog
-            key="new"
-            mode={{ kind: 'new' }}
-            now={now}
-            onClose={() => setDialog(null)}
-            onCreated={onCreated}
-          />
-        )}
-        {dialog?.kind === 'clone' && (
-          <TaskDialog
-            key={`clone-${dialog.id}`}
-            mode={{ kind: 'clone', values: dialog.values }}
-            now={now}
-            onClose={() => setDialog(null)}
-            onCreated={onCreated}
-          />
-        )}
-      </main>
-    </div>
+          )}
+        </main>
+      </div>
+      {printing && <PrintCard {...printing} now={now} />}
+    </>
   )
 }
 

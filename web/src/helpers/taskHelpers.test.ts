@@ -12,6 +12,8 @@ import {
   matchesStatus,
   taskSignal,
   taskStatus,
+  todayState,
+  doneToday,
 } from './taskHelpers'
 
 // Fixed "now": Tuesday 17 Nov 2026, 10:00 in the machine's local time.
@@ -435,5 +437,68 @@ describe('Alerting and Snoozed filters', () => {
 
   it('Snoozed lists the running snoozes', () => {
     expect(matching('Snoozed')).toEqual([snoozed])
+  })
+})
+
+describe('todayState', () => {
+  it('is caught up when nothing open is due today or overdue', () => {
+    expect(todayState([], NOW)).toBe('caughtUp')
+    expect(
+      todayState(
+        [
+          task({ deadline: at(18, 20) }), // tomorrow
+          task({ remindAt: at(17, 7) }), // a reached reminder, no deadline
+          task({ deadline: at(17, 20), completedAt: at(17, 9) }),
+          task({ deadline: at(16, 20), archivedAt: at(16, 9) }),
+        ],
+        NOW,
+      ),
+    ).toBe('caughtUp')
+  })
+
+  it('a snoozed overdue task still counts', () => {
+    expect(
+      todayState(
+        [task({ deadline: at(16, 20), snoozedUntil: at(18, 7) })],
+        NOW,
+      ),
+    ).toBe('due')
+  })
+
+  it('pinnedOnly when every task due today is pinned', () => {
+    expect(
+      todayState([task({ deadline: at(16, 20), pinned: true })], NOW),
+    ).toBe('pinnedOnly')
+    expect(
+      todayState(
+        [
+          task({ deadline: at(16, 20), pinned: true }),
+          task({ deadline: at(17, 20) }),
+        ],
+        NOW,
+      ),
+    ).toBe('due')
+  })
+
+  it("just after midnight, yesterday's open deadline is overdue: not caught up", () => {
+    expect(todayState([task({ deadline: at(16, 23) })], at(17, 0, 5))).toBe(
+      'due',
+    )
+  })
+})
+
+describe('doneToday', () => {
+  it("counts tasks completed on today's date, archived included", () => {
+    expect(
+      doneToday(
+        [
+          task({ completedAt: at(17, 8) }),
+          task({ completedAt: at(17, 0, 1), archivedAt: at(17, 9) }),
+          task({ completedAt: at(16, 23) }),
+          task(),
+        ],
+        NOW,
+      ),
+    ).toBe(2)
   })
 })

@@ -62,7 +62,7 @@ Type `\q` to leave. More checks are in [PLAN.md](PLAN.md).
 
 ## First-cut scope
 
-In priority order. Anything beyond these will be built only if time allowed; see DECISIONS.md for where the split ended up.
+In priority order. Anything beyond these will be built only if time allowed.
 
 1. Today and tomorrow view: what is now and what is next
 2. Full task list with the minimum useful information per row
@@ -76,8 +76,7 @@ In priority order. Anything beyond these will be built only if time allowed; see
 10. Sort
 11. Filter
 12. Search
-
-If time allows: print today's tasks.
+13. Print a scan section (Today, Tomorrow, ...) as an index card
 
 ## Architecture
 
@@ -169,12 +168,12 @@ All timestamps are stored in UTC and shown in the viewer's local time.
         ├── api/client.ts    # fetch calls to /api
         ├── types.ts
         ├── useNow.ts        # clock that ticks every minute
-        ├── helpers/         # plain task logic (overdue, reminders, sections, edit form rules) and tests
+        ├── helpers/         # plain task logic (overdue, alerts, sections, snooze, edit form rules, print card) and tests
         └── components/
-            ├── scan/        # the Today screen: TaskSection and TaskLine (one task in a section)
+            ├── scan/        # the Today screen: TaskSection, TaskLine (one task in a section), the caught-up message and the print card
             ├── table/       # the All tasks table and its toolbar
             ├── dialog/      # task detail, edit, new task and clone (TaskDialog) and its form fields
-            └── shared/      # pieces used by more than one view (Tag, NewTag, TitleButton, Toasts)
+            └── shared/      # pieces used by more than one view (Tag, TitleButton, Toasts, Icons, SnoozeMenu)
 ```
 
 ## Local development
@@ -216,4 +215,5 @@ npm run format  # Prettier: single quotes, no semicolons
 - Single user. There is no login; the API acts as the one seeded user.
 - Sorting, filtering, search and pagination run in the browser. That is fine for hundreds or a few thousand tasks and would move to the server beyond that.
 - No migration tool yet. Tables are created at startup.
+- Printing was checked in Chrome only, not yet in Safari or Firefox or on a real printer.
 - Sample data is dated once, when the database is first seeded. On a later day, run `docker compose down -v` and start again to re-date it.

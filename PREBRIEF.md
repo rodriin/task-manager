@@ -40,13 +40,13 @@ Key takeaways:
 What the tool aims to address day-one:
 
 - One place for every task, with a one-field quick capture (title only) so a task can be captured in seconds (New task → title → Enter).
-- Opens on Pinned, Today, Tomorrow and Reminders, not the full list. The whole pile is one click away and includes archived tasks, marked as archived, so nothing is ever lost. This is the answer to "everything in there, but I can't look at everything".
+- Opens on Pinned, Today, Tomorrow, New and Reminders, not the full list. The whole pile is one click away and includes archived tasks, marked as archived, so nothing is ever lost. This is the answer to "everything in there, but I can't look at everything".
 - Alerts appear inside the app for anything overdue, due soon, or past its reminder time, and keep showing until it's done, archived or snoozed. Nothing buzzes. Snooze quiets an alert but the task stays visible, marked as snoozed. This is the answer to "hate pings, burned by silence".
 - Overdue is calculated from the deadline, so nothing has to be marked late by hand and there are no data inconsistencies between deadline and overdue caused by data manipulation.
 - Clone a task is the initial answer to the repetitive (weekly and quarterly) items.
 - The "You're caught up" message when today is clear, gives the user the feeling of being ahead.
 - Types include Sign-off and Recurring, taken straight from his examples.
-- Print today's list as the index card (if time allows).
+- Print today's tasks as an idex card, any scan section prints as well, one per card, as a 5 × 3 inch box.
 - Sample data is made to fit the example: tow bar, phase inspection sign-off, det brief, roll-up, currency paperwork.
 
 Initial features:
@@ -55,7 +55,7 @@ Initial features:
 - Full task list (all-inclusive) with the minimum useful information per row
 - Task detail and edit modal
 - New task and cloning
-- Alerts for tasks due today or very soon
+- Alerts for tasks due today, very soon, overdue or for reached reminders
 - Alert snoozing
 - Feel good "You're caught up" message when today is clear
 - Pin tasks to the top of the today view
@@ -63,8 +63,7 @@ Initial features:
 - Sort
 - Filtering
 - Search
-- If time allows (bonus points):
-  - Print today's tasks
+- Print today's tasks
 
 Future features:
 
@@ -106,7 +105,7 @@ Assumptions and open questions:
 - **Is cloning enough for the rhythm items**, or do you need them to be auto generated every Monday even if it is just its skeleton form?
 - **Do in-app alerts count as "another thing that buzzes"?** If so, does the ability to individually snooze each task help or would a snooze all button work better?
 - **Automatic alerts:** will show in the app for tasks that are overdue, due within 24 hours, or past the reminder time set. Does this feel reasonable?
-- **Snooze lengths.** Three hours and tomorrow morning are guesses.
+- **Snooze lengths.** 30 minutes, 1, 3, 6 and 8 hours, and tomorrow morning are guesses.
 - **Capturing tasks is via typing.** A lot of tasks arrive by email or in person. Would you prefer to forward an email to the tool? Would you be typing on a phone?
 - **Categories** (Admin, Supply, Flight, Personal): are these enough or are there others that should be added?
 - **Does priority mean anything to you?** "Everything's urgent, so nothing is."
@@ -117,7 +116,7 @@ Assumptions and open questions:
 - **The scan and task order.** The first cut puts Pinned tasks first as its own section, and Today is overdue first, then by deadline just like Tomorrow. Then there is the Reminders section. Is that the right order for you? Do you want to add a Week section or any other section to the scan view?
 - **The default due time is 20:00.** Is that the right default due time?
 - **Untriggered reminders are not included in the Scan.** Should a reminder that hasn't gone off yet stay hidden from the scan?
-- **Full-list order:** tasks appear in the order they were entered. Should the inital sort be different?
+- **Full-list order:** tasks appear in the order they were entered. Should the initial sort be different?
 - **Filters:** are Status and Deadline enough, or do you want dropdowns for category, priority, pinned or "has a reminder"?
 - **Week and quarter:** does your week start on Monday? Do calendar quarters match how you think about quarterly paperwork? They line up with the federal fiscal quarters.
 - **Rows per page:** is 10 the right amount to have by default?
@@ -125,6 +124,7 @@ Assumptions and open questions:
 - **Are Complete and Archive as checkboxes in the edit form enough,** or do you want one-click buttons on the rows?
 - **Clone is only available from the edit task dialog.** Do you want the clone feature to be available as a button on each task in all views?
 - **For newly created tasks:** is 24 hours the right meaning of "new", and is a 5-second toast long enough to read?
+- **Caught up:** it counts pinned and snoozed overdue tasks, so it never says "caught up" over one. Is "N done today" useful, or noise?
 
 ## Where AI tooling helped, and where I overrode it
 
@@ -141,8 +141,9 @@ AI helped me:
 - It copied every check and the partial index from schema.sql into the models, so the rules actually exist in the running database. It also checked the seed against them, including on both daylight-saving change days.
 - It suggested the server unpin and clear the snooze when a task is archived, and clear the snooze when one is completed. Otherwise every screen would have to remember this or the database would reject the save.
 - It built the All tasks table with search, filters, sorting and pages in the browser.
-- It flagged that with a deadline sort as the default, the full table view would opened on a page of grey archived tasks.
-- It added a lot of the missing accessibility once I flag that some was missing.
+- It flagged that with a deadline sort as the default, the full table view would open on a page of grey archived tasks.
+- It added a lot of the missing accessibility once I flagged that some was missing.
+- It pointed out that "caught up" can't just mean "the Today section is empty". A pinned overdue task sits in Pinned, and a snoozed overdue task is still overdue.
 
 I overrode or corrected AI:
 
@@ -165,6 +166,7 @@ I overrode or corrected AI:
 - I decided archived tasks stay in the full list, with archiving done as a normal edit, so nothing would be missing from the full table data and the Status filter can hide archived tasks as needed.
 - It proposed moving the reminder to 07:00 on the deadline's day, or to the deadline itself if earlier. I chose the day before the deadline at the reminder's original time: one rule, and at least a day to act.
 - It suggested to have the clone button disabled if data is edited in the edit dialog. I overrode that suggestion because it is a legitimate case and a user should not have to enter/modify data twice.
+- It put the printer button in a column beside the list. I had it moved to line up with the list's right border.
 
 AI was wrong or inconsistent:
 

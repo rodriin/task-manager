@@ -20,3 +20,13 @@
     outline: 2px solid var(--color-blue-600);
   }
 }
+
+/* Printing a scan section: only the index card, black on white, half-inch page margins. */
+@media print {
+  @page {
+    margin: 0.5in;
+  }
+  body {
+    background: white;
+  }
+}

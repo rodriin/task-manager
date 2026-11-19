@@ -4,6 +4,7 @@
 import {
   addDays,
   endOfQuarter,
+  isSameDay,
   isSameMonth,
   isSameQuarter,
   isSameWeek,
@@ -140,6 +141,33 @@ export function buildScan(tasks: Task[], now: Date): Scan {
   )
   scan.reminders.sort(byReminder)
   return scan
+}
+
+export type TodayState = 'caughtUp' | 'pinnedOnly' | 'due'
+
+/**
+ * Is today clear? Looks at every open task, pinned and snoozed included: an overdue sign-off
+ * that's pinned (so it sits in Pinned, not Today) or snoozed is still overdue, and "caught up"
+ * must never be said over it. Reminders and later deadlines don't count.
+ * - caughtUp: no open task has a deadline before the end of today.
+ * - pinnedOnly: some do, but all of them are pinned (the Today section itself is empty).
+ * - due: the Today section has tasks.
+ */
+export function todayState(tasks: Task[], now: Date): TodayState {
+  const endOfToday = startOfDay(addDays(now, 1)).getTime()
+  const due = tasks.filter(
+    (t) =>
+      isOpen(t) && t.deadline !== null && t.deadline.getTime() < endOfToday,
+  )
+  if (due.length === 0) return 'caughtUp'
+  return due.every((t) => t.pinned) ? 'pinnedOnly' : 'due'
+}
+
+/** How many tasks were completed on the viewer's today. Archived ones count: done is done. */
+export function doneToday(tasks: Task[], now: Date): number {
+  return tasks.filter(
+    (t) => t.completedAt !== null && isSameDay(t.completedAt, now),
+  ).length
 }
 
 export type Alert = 'overdue' | 'reminder' | 'soon'

@@ -275,3 +275,21 @@ If time allows: pin, paginate, sort, filter, search, print.
 **Alerting and Snoozed are Status filter options.** Like New, they sit in the Status dropdown, so the toolbar keeps two dropdowns.
 
 **New is an icon, not a tag:** High, In progress and New side by side were too heavy; violet sparkles next to the title keeps 'violet means new' and reads at a glance.
+
+---
+
+## Caught up message and print
+
+**Caught up means nothing open is due today or overdue, anywhere.** Pinned and snoozed tasks count too: an overdue sign-off that's pinned or snoozed is still overdue, and saying "caught up" over it is the missed sign-off again. Reminders and tomorrow's tasks don't block it; "today is clear" is about deadlines.
+
+**Print one section at a time, as an index card.** A printer button on each scan section prints that section only, so the user can pick what goes on the card.
+
+**The card is a 5 × 3 inch box on a normal page, not a card-sized page.** Any printer prints it at true size, and it can be trimmed. If the index-card size is needed, a card-sized page is a one-line change.
+
+**On paper, flags are words, not colors.** Most printers are black and white, so overdue prints as "OVERDUE" and High as "!", with a box to tick by pen. A snoozed overdue task still prints as overdue; paper can't snooze.
+
+---
+
+## Wrap-up
+
+**All 13 scope items made it in, print included.** The priority order held up, each part was usable before the next began, so stopping early would still have left a demo.

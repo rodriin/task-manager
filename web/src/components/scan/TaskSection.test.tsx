@@ -138,4 +138,57 @@ describe('TaskSection', () => {
       within(line).getByText('Snoozed until').parentElement,
     ).toHaveTextContent('Snoozed until13:00')
   })
+
+  it('an empty section says what it is given, and keeps "(0 Tasks)"', () => {
+    render(
+      <TaskSection
+        title="Today"
+        tasks={[]}
+        now={NOW}
+        onOpen={() => {}}
+        empty={<p>You're caught up.</p>}
+        onPrint={() => {}}
+      />,
+    )
+    expect(screen.getByText("You're caught up.")).toBeVisible()
+    expect(screen.queryByText('Nothing due')).toBeNull()
+    expect(screen.getByText('(0 Tasks)')).toBeVisible()
+    // Nothing to print: no button.
+    expect(screen.queryByRole('button', { name: /Print/ })).toBeNull()
+  })
+
+  it('the print button prints, without collapsing the section', async () => {
+    const onPrint = vi.fn()
+    render(
+      <TaskSection
+        title="Tomorrow"
+        tasks={[task(1)]}
+        now={NOW}
+        onOpen={() => {}}
+        onPrint={onPrint}
+      />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Print Tomorrow as an index card' }),
+    )
+    expect(onPrint).toHaveBeenCalledOnce()
+    expect(screen.getByText('Task 1')).toBeVisible()
+  })
+
+  it('the print button stays when the section is collapsed', async () => {
+    render(
+      <TaskSection
+        title="Tomorrow"
+        tasks={[task(1)]}
+        now={NOW}
+        onOpen={() => {}}
+        onPrint={() => {}}
+      />,
+    )
+    await userEvent.click(screen.getByText('Tomorrow'))
+    expect(screen.getByText('Task 1')).not.toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Print Tomorrow as an index card' }),
+    ).toBeVisible()
+  })
 })

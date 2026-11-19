@@ -10,8 +10,8 @@ Working plan for the build, split into parts. A part is a unit of planned work, 
 | 4 | UI: All tasks tab, a full table with search, filters, sort and pages | Done |
 | 5 | UI: task detail and edit, in a dialog | Done |
 | 6 | UI: new task and clone, in the same dialog | Done |
-| 7 | UI: alerts (overdue, due soon, reminder), snooze, and status icons | Built and verified, ready to commit |
-| 8+ | Not planned yet | — |
+| 7 | UI: alerts (overdue, due soon, reminder), snooze, and status icons | Done |
+| 8 | UI: "You're caught up" and print a scan section as an index card | Done |
 
 ---
 
@@ -698,3 +698,118 @@ Also fixed here: the scan line first showed a reached reminder on overdue lines 
 Changed after review: New became a violet sparkles icon right after the title, in the scan and the table's Title cell (it was a tag next to High and In progress in the scan, and in the table's Status cell). Scan line 2 got lighter: only the deadline is spelled out; the reminder and the snooze end are a small icon (alarm clock, crossed-out bell) and a short time ("07:00", "Thu 07:00"), grey unless they're the alert. Checked in the browser on 2026-11-18 at 18:35 with two new tasks, one High and In progress. The dialog's top got lighter too: one short line under the heading, saying how far off the date is ("Overdue by 12 days", "Due in 1 hour", "Snoozed until Fri 07:00 · overdue by 11 days", then End snooze as a link), or nothing; the exact time is in the tooltip and the fields. "Created …" moved to small print above the buttons.
 
 Verified 2026-11-18 at 17:45 New York time, driven in headless Chrome against `docker compose up --build`, then re-seeded with `down -v`. Tests: 119.
+
+---
+
+## Part 8: Caught up, and print a section
+
+**Goal:** two last pieces of the scan. When nothing is left for today, the Today section says so in one calm line instead of "Nothing due": the "feel ahead of the jet" moment (priority item 7). And each scan section gets a small printer button that prints that section, alone, as an index card: his own idea ("the thing just prints me an index card every morning. Here's your day, here's what's coming at you"). Print is the README's "if time allows" item. No API change and no schema change.
+
+**Out of scope:** a scheduled or automatic morning print (nothing runs unless he clicks), printing several sections on one card, printing from the All tasks table, a PDF export, a print-only layout per printer or paper size, any count or badge for "caught up" outside the Today section.
+
+### Rules
+
+**Caught up**
+
+- **Caught up means nothing open is due today or overdue, anywhere.** Not just "the Today section is empty": a pinned task that's overdue sits in Pinned, not Today (seed task 42), and the app must not say "caught up" over it. So the rule checks every open task, pinned or not: none has a deadline before the end of today.
+- **A snoozed overdue task still blocks it.** Snooze quiets an alert, never the task (seed task 47). Saying "caught up" while a sign-off is overdue under a snooze is the missed sign-off again.
+- **Reminders, Tomorrow and New don't block it.** "Today is clear" is about deadlines. A reached reminder with a later deadline still shows in Reminders below, with its amber bell.
+- **What it says**, in the Today section, in place of "Nothing due":
+  - caught up: a green check and "You're caught up." Green = done or success, as elsewhere. When tasks were completed today, add "3 done today" in grey; it's the one number that says he's ahead, and it's already in the data (`completedAt`).
+  - Today is empty but a pinned task is due today or overdue: "Nothing else due today" in grey. The pinned task above has the bell.
+- **The Today heading keeps "(0 Tasks)".** The message is in the body, so a collapsed Today still reads the same.
+- **Demo note:** the seed has 10 open tasks due today or overdue (1–4, 42–47), so the message only appears after completing all of them. The seed doesn't change for this: the overdue pile is the story the alerts tell. The message is covered by tests; in the demo, show it at the end, or not at all (see open questions).
+
+**Print**
+
+- **One printer button per section, in the section heading row, on the right.** An icon button (Lucide `printer`, inline SVG in `shared/Icons`, like the others), grey, with `aria-label` and a tooltip: "Print Today as an index card". It's a sibling of `<summary>`, not inside it, so a click never collapses the section and the summary stays a plain toggle. Shown only when the section has tasks: an empty card isn't worth printing.
+- **It prints that section only, collapsed or not.** Clicking it sets which section to print (`printing` state in `App`), renders the card, and calls `window.print()` (with `flushSync`, so the card is on the page when the print dialog opens). `afterprint` clears the state. Nothing is saved.
+- **The card is a separate print-only view (`PrintCard`)**, not the screen's section with print CSS on top. Screen lines have tints, bells, buttons and tooltips; a card needs plain text that reads in black and white. In print, everything else is hidden (Tailwind `print:hidden` on the app, `hidden print:block` on the card).
+- **Card size: 5 × 3 inches, landscape, the classic index card,** drawn as a bordered box at the top left of a normal page (a cut line), not an `@page` size. Any home or office printer then prints it at true size on Letter or A4, and it can be trimmed or copied by hand. A section longer than one card goes onto a second card box (10 lines a card, "Today (1/2)" in the heading), never splitting a line.
+- **What's on the card, in black and white:**
+  - Heading: section name and date ("Today · Wed 18 Nov"), and on the right "Printed 06:42".
+  - One line per task, in the scan's order: an empty box ☐ to tick with a pen, the title (cut with an ellipsis if longer than the line), then the time on the right: the deadline in `short()` form ("20:00", "Thu 20:00"), or "Rem 07:00" if there's only a reminder.
+  - Flags as text, since colour doesn't print: "OVERDUE" in bold capitals before the time, "!" before the title for High, "📌" kept for Pinned (it prints as a glyph). No bells, tints, New sparkles or snooze marks: a snoozed overdue task prints as OVERDUE, because on paper there's nothing to snooze.
+  - No description, category or type: one line per task, as on a card.
+- **Times are 24-hour and the viewer's local time**, as on screen.
+
+### Layout
+
+```
+  ▾ Today  Wed 18 Nov (0 Tasks)                                         ← no printer button: empty
+     ✓ You're caught up.  3 done today
+
+  ▾ Today  Wed 18 Nov (0 Tasks)
+     Nothing else due today                                              ← pinned task due today above
+
+  ▾ Tomorrow  Thu 19 Nov (3 Tasks)                                  ⎙   ← printer button, right
+
+  Printed (one card box, 5 × 3 in, top left of the page):
+  ┌──────────────────────────────────────────────────────┐
+  │ TODAY · Wed 18 Nov                     Printed 06:42 │
+  │ ──────────────────────────────────────────────────── │
+  │ ☐ ! Inspect the tow bar adapter  OVERDUE Mon 20:00   │
+  │ ☐ Maintenance sign-off, jet 211  OVERDUE 6 Nov 20:00 │
+  │ ☐ ! Morning det brief                          08:00 │
+  │ ☐ Review discrepancy book for 204              14:00 │
+  └──────────────────────────────────────────────────────┘
+```
+
+### 8.1 Task helpers: `web/src/helpers/taskHelpers.ts` (+ tests)
+
+- `todayState(tasks, now)`: `'caughtUp' | 'pinnedOnly' | 'due'`. Open tasks with a deadline before the end of today: none → `caughtUp`; all pinned → `pinnedOnly`; otherwise `due`. Uses the same end-of-today as `buildScan`.
+- `doneToday(tasks, now)`: count of tasks with `completedAt` on the viewer's today (archived included: done is done).
+- Tests: no open tasks due → caught up; only a later reminder reached → caught up; a snoozed overdue task → not; a pinned overdue task alone → `pinnedOnly`; a task completed today counts, one completed yesterday doesn't; just after midnight, yesterday's open deadline is overdue → not caught up.
+
+### 8.2 Print helpers: `web/src/helpers/printCard.ts` (+ tests)
+
+- `cardLine(task, now)`: `{ title, high, pinned, overdue, time }` with `time` from `short()` (deadline) or `"Rem " + short()` (reminder only), or `''`.
+- Tests: deadline today → "20:00"; another day → "Thu 20:00"; overdue → `overdue: true`, snoozed or not; reminder only → "Rem 07:00"; neither → empty.
+
+### 8.3 Icons: `web/src/components/shared/Icons.tsx`
+
+- `PrintIcon`: Lucide `printer` path data, same `Svg` wrapper, hidden from screen readers (the button carries the label).
+
+### 8.4 Section: `web/src/components/scan/TaskSection.tsx` (+ tests)
+
+- An optional `empty` prop (node) replaces "Nothing due"; `App` passes `scan/TodayClear` (+ tests) for Today: the caught-up or "Nothing else due today" message.
+- An optional `onPrint` prop: when set and the section has tasks, the printer button sits in the heading row beside the `<summary>` (a flex row around both). `print:hidden` on the whole scan.
+- Tests: the empty message renders in the body and the heading still says "(0 Tasks)"; the printer button calls `onPrint` and doesn't toggle the `<details>`; no button on an empty section.
+
+### 8.5 Card: `web/src/components/scan/PrintCard.tsx` (+ tests)
+
+- Props: `title`, `subtitle`, `tasks`, `now`. Card box `w-[5in] h-[3in]`, black on white, 10–11pt, a thin border; `hidden print:flex`. The tasks are split into cards of `LINES_PER_CARD` (10).
+- An `@media print` block in `index.css`: page margins 0.5in, white background. Nothing else in print.
+- Tests: renders the heading and one line per task in order; OVERDUE on an overdue snoozed task; "!" for High; no buttons or links in it.
+
+### 8.6 Wiring: `web/src/App.tsx`
+
+- `printing` state: which section's title, subtitle and tasks to print, or `null`. `printSection(...)`: `flushSync(() => setPrinting(...))`, then `window.print()`. A `useEffect` adds an `afterprint` listener that clears it.
+- `<main>` and the toasts get `print:hidden`; `PrintCard` renders outside them when `printing` is set.
+- Today's `empty` prop from `todayState` and `doneToday`.
+- The sections become a list mapped to `TaskSection`, so each gets `onPrint` the same way.
+- Tested in `TaskSection` (the button calls `onPrint`) and `PrintCard` (what the card shows); the wiring was checked in the browser.
+
+### 8.7 Docs
+
+- CLAUDE.md: the caught-up rule (no open deadline today anywhere, snoozed included) and messages; the printer button per section and what the card shows; `PrintCard` and `printCard.ts` in the layout list.
+- DECISIONS.md: written by the author. Choices worth an entry: caught up counts pinned and snoozed tasks; print a section as a card box on a normal page, not an `@page` size; text flags instead of colour on paper.
+
+### 8.8 Verify
+
+- [x] `npm test`, `npm run lint`, `npm run build` pass. Tests: 138.
+- [x] Fresh seed: Today shows its tasks, no message, and a printer button on every section with tasks.
+- [x] Caught up: with every open task due today or overdue completed (in the API response, in the browser; the DB untouched), Today reads "(0 Tasks) You're caught up. 10 done today" with the green check. "Nothing else due today" (pinned only) and the snoozed-overdue case are covered by `TodayClear.test.tsx` and `taskHelpers.test.ts`, not seen in the browser.
+- [x] Print Today in Chrome (headless, print media): one 5 × 3 card box, Today only, black on white, OVERDUE in bold on the 7 overdue lines (the snoozed one included), "!" on High, times right-aligned. Safari and Firefox print preview: not tried.
+- [x] The printer button doesn't collapse the section, and stays when it's collapsed (tests and browser). A 12-task section goes onto two cards (`PrintCard.test.tsx`); not printed for real.
+- [x] Keyboard: the button is a labelled `<button>`, reached by Tab after the section's lines.
+- [x] Phone width (390px): no sideways scroll.
+- [x] `docker compose up --build` serves it at <http://localhost:8000>.
+- [ ] Printed on a real printer: not done.
+
+Verified 2026-11-18 at 19:36 New York time, driven in headless Chrome against `docker compose up --build`.
+
+### Open questions
+
+- **Showing "caught up" in the demo.** Completing ten tasks live is slow. Options: show it last, after walking through completing a few; show it from the tests; or add a seed variant. Recommendation: complete a few live, then say what happens at zero and show the test. Don't change the seed.
+- **Card size.** A 5 × 3 box on a normal page is the safe guess. If he has index-card stock and a printer that takes it, `@page { size: 5in 3in }` is a one-line change. Ask Maverick.

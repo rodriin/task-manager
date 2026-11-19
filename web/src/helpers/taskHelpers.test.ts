@@ -1,13 +1,16 @@
 import type { Task } from '../types'
 import {
+  alertReason,
   alertState,
   buildScan,
+  isDueSoon,
   isOverdue,
   isNew,
   isReminderActive,
   matchesDeadline,
   matchesSearch,
   matchesStatus,
+  taskSignal,
   taskStatus,
 } from './taskHelpers'
 
@@ -184,9 +187,60 @@ describe('alertState', () => {
     const late = task({ deadline: at(17, 9), remindAt: at(17, 8) })
     expect(alertState(late, NOW)).toBe('overdue')
     expect(alertState(task({ remindAt: at(17, 9) }), NOW)).toBe('reminder')
-    expect(alertState(task({ deadline: at(18, 9) }), NOW)).toBeNull()
+    expect(alertState(task({ deadline: at(18, 11) }), NOW)).toBeNull()
     expect(alertState({ ...late, completedAt: at(17, 9) }, NOW)).toBeNull()
     expect(alertState({ ...late, archivedAt: at(17, 9) }, NOW)).toBeNull()
+  })
+
+  it('puts the reminder before due soon', () => {
+    const t = task({ deadline: at(17, 20), remindAt: at(17, 9) })
+    expect(alertState(t, NOW)).toBe('reminder')
+  })
+
+  it('is quiet while snoozed, and back when the snooze ends', () => {
+    const late = task({ deadline: at(16, 20), snoozedUntil: at(17, 13) })
+    expect(alertState(late, NOW)).toBeNull()
+    expect(alertReason(late, NOW)).toBe('overdue') // what it would show
+    expect(alertState(late, at(17, 13))).toBe('overdue') // snooze over
+  })
+})
+
+describe('isDueSoon', () => {
+  it('is the next 24 hours, for a task with no reminder', () => {
+    expect(isDueSoon(task({ deadline: at(18, 9) }), NOW)).toBe(true) // 23 h
+    expect(isDueSoon(task({ deadline: at(18, 10) }), NOW)).toBe(true) // 24 h
+    expect(isDueSoon(task({ deadline: at(18, 11) }), NOW)).toBe(false) // 25 h
+    expect(isDueSoon(task({ deadline: at(17, 9) }), NOW)).toBe(false) // overdue
+    expect(alertState(task({ deadline: at(18, 9) }), NOW)).toBe('soon')
+  })
+
+  it('never applies when he set a reminder: his reminder wins', () => {
+    const t = task({ deadline: at(17, 20), remindAt: at(17, 18) })
+    expect(isDueSoon(t, NOW)).toBe(false)
+    expect(alertState(t, NOW)).toBeNull() // reminder still ahead: quiet
+    expect(alertState(t, at(17, 18))).toBe('reminder')
+  })
+
+  it('is never on a completed or archived task', () => {
+    const t = task({ deadline: at(17, 20) })
+    expect(isDueSoon({ ...t, completedAt: at(17, 9) }, NOW)).toBe(false)
+    expect(isDueSoon({ ...t, archivedAt: at(17, 9) }, NOW)).toBe(false)
+  })
+})
+
+describe('taskSignal', () => {
+  it('picks the icon: red bell, amber bell, snoozed, done or none', () => {
+    expect(taskSignal(task({ deadline: at(16, 20) }), NOW)).toBe('overdue')
+    expect(taskSignal(task({ deadline: at(17, 20) }), NOW)).toBe('warning')
+    expect(taskSignal(task({ remindAt: at(17, 9) }), NOW)).toBe('warning')
+    expect(
+      taskSignal(task({ remindAt: at(17, 9), snoozedUntil: at(17, 12) }), NOW),
+    ).toBe('snoozed')
+    expect(taskSignal(task({ completedAt: at(16, 9) }), NOW)).toBe('done')
+    expect(
+      taskSignal(task({ completedAt: at(16, 9), archivedAt: at(16, 10) }), NOW),
+    ).toBeNull()
+    expect(taskSignal(task({ deadline: at(20, 20) }), NOW)).toBeNull()
   })
 })
 
@@ -361,5 +415,25 @@ describe('New', () => {
     expect(matchesStatus(task({ createdAt: hoursAgo(30) }), 'New', NOW)).toBe(
       false,
     )
+  })
+})
+
+describe('Alerting and Snoozed filters', () => {
+  const overdue = task({ deadline: at(16, 20) })
+  const soon = task({ deadline: at(17, 20) })
+  const snoozed = task({ deadline: at(16, 20), snoozedUntil: at(17, 13) })
+  const expired = task({ remindAt: at(17, 8), snoozedUntil: at(17, 9) })
+  const later = task({ deadline: at(25, 20) })
+  const done = task({ deadline: at(16, 20), completedAt: at(16, 9) })
+  const all = [overdue, soon, snoozed, expired, later, done]
+  const matching = (filter: 'Alerting' | 'Snoozed') =>
+    all.filter((t) => matchesStatus(t, filter, NOW))
+
+  it('Alerting lists the bells showing now, an expired snooze included', () => {
+    expect(matching('Alerting')).toEqual([overdue, soon, expired])
+  })
+
+  it('Snoozed lists the running snoozes', () => {
+    expect(matching('Snoozed')).toEqual([snoozed])
   })
 })

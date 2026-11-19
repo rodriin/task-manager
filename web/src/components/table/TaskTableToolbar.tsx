@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { ACCENT_BUTTON } from '../dialog/styles'
 import {
   DEADLINE_FILTERS,
   STATUS_FILTERS,
@@ -97,7 +98,7 @@ export function TaskTableToolbar({
         <button
           type="button"
           onClick={onClear}
-          className="text-sm text-gray-600 hover:text-gray-900 rounded border border-gray-300 bg-white px-2 py-1 hover:bg-gray-100"
+          className={`${ACCENT_BUTTON} text-sm`}
         >
           Clear
         </button>

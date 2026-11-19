@@ -278,6 +278,31 @@ describe('planSave', () => {
     expect(plan.patch).toEqual({ title: 'New title', status: 'In progress' })
     expect(plan.snoozeEnds).toBe(false)
   })
+
+  it('End snooze alone sends only the snooze', () => {
+    const t = task({ deadline: at(16, 20), snoozedUntil: at(17, 13) })
+    const plan = planSave(t, edit(t, { endSnooze: true }), NOW)
+    expect(plan.patch).toEqual({ snoozedUntil: null })
+    expect(plan.snoozeEnds).toBe(true)
+  })
+
+  it('End snooze goes in the same patch as the other edits', () => {
+    const t = task({ deadline: at(16, 20), snoozedUntil: at(17, 13) })
+    const plan = planSave(
+      t,
+      edit(t, { title: 'Sign-off, jet 211', endSnooze: true }),
+      NOW,
+    )
+    expect(plan.patch).toEqual({
+      title: 'Sign-off, jet 211',
+      snoozedUntil: null,
+    })
+  })
+
+  it('clones never carry End snooze', () => {
+    const t = task({ deadline: at(16, 20), snoozedUntil: at(17, 13) })
+    expect(toCloneValues(edit(t, { endSnooze: true })).endSnooze).toBe(false)
+  })
 })
 
 describe('saveErrorMessage', () => {

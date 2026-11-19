@@ -253,3 +253,25 @@ If time allows: pin, paginate, sort, filter, search, print.
 **"New" for a task's first 24 hours.** A violet tag, a scan section after Tomorrow, and a Status filter option, so a fresh capture with no date is still visible and doesn't get added twice. The creation toast just confirms and fades; the tag and section do the remembering.
 
 **Scan sections collapse.** The user can choose what to look at; all open by default, and the count stays visible when collapsed.
+
+---
+
+## Alerts, snooze and icons
+
+**Due soon is amber, like a reached reminder.** Both mean "act on this soon", and red stays for overdue only. A third color would be one more thing to learn for the same message.
+
+**Reminders win over due soon.** A task with a reminder only alerts when the reminder is reached: the user already chose when to be told. Due soon covers the tasks with no reminder, which would otherwise stay quiet until they're overdue. It also means a snooze always ends after the reminder, as the database requires.
+
+**Icons back up the colors and cut the text.** A red or amber bell for an alert, a bell with a slash for snoozed, a green check for completed, the same in the scan, the table and the dialog. The icon replaces words like "Overdue · was due", so each scan line fits in two lines, and the bells line up in a column. The pin stays the 📌 emoji: pinned tasks are the most important ones, so the pin should stand out, and its red is a small glyph, not an alert tint.
+
+**Snooze lives on the bell.** The answer to an alert is where the alert is: click the bell, pick how long. It saves at once, so it stays out of the edit dialog, where it would mix with unsaved edits.
+
+**The dialog can end a snooze, not start one.** Ending a snooze only makes an alert louder, so it's safe in a form and is applied on Save. Starting one from a form is one click from quieting a sign-off for a month.
+
+**A snooze never runs past the deadline.** A task snoozed before its deadline turns red the minute it goes overdue. That's the missed sign-off: it can't happen under a snooze. An overdue task can still be snoozed, by choice, and the snooze ends.
+
+**Six snooze options: 30 minutes, 1, 3, 6, 8 hours, tomorrow morning.** Tomorrow morning is 07:00, not a number of hours, and "this morning" before 07:00. Each option shows when it ends.
+
+**Alerting and Snoozed are Status filter options.** Like New, they sit in the Status dropdown, so the toolbar keeps two dropdowns.
+
+**New is an icon, not a tag:** High, In progress and New side by side were too heavy; violet sparkles next to the title keeps 'violet means new' and reads at a glance.

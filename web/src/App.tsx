@@ -105,10 +105,11 @@ function App() {
                   aria-controls={`panel-${id}`}
                   tabIndex={tab === id ? 0 : -1}
                   onClick={() => setTab(id)}
-                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${tab === id
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${
+                    tab === id
                       ? 'border-gray-900 text-gray-900'
                       : 'border-transparent text-gray-500 hover:text-gray-800'
-                    }`}
+                  }`}
                 >
                   {label}
                 </button>

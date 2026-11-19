@@ -9,8 +9,9 @@ Working plan for the build, split into parts. A part is a unit of planned work, 
 | 3 | UI: the scan (Pinned, Today, Tomorrow, Reminders), read-only | Done |
 | 4 | UI: All tasks tab, a full table with search, filters, sort and pages | Done |
 | 5 | UI: task detail and edit, in a dialog | Done |
-| 6 | UI: new task and clone, in the same dialog | Built and verified, ready to commit |
-| 7+ | Not planned yet | — |
+| 6 | UI: new task and clone, in the same dialog | Done |
+| 7 | UI: alerts (overdue, due soon, reminder), snooze, and status icons | Built and verified, ready to commit |
+| 8+ | Not planned yet | — |
 
 ---
 
@@ -567,3 +568,133 @@ Clone dialog:         "Clone task", the edit fields minus Archived, [Cancel] [Ad
 Also fixed here: `isNew` first had a lower bound (created at or before `now`). The clock ticks once a minute, so a task created after the last tick looked a few seconds in the future and got no New tag; the bound is gone.
 
 Verified 2026-11-18 at 14:55 New York time, driven in headless Chrome against `docker compose up --build`, then re-seeded with `down -v`.
+
+---
+
+## Part 7: Alerts, snooze and status icons
+
+**Goal:** the scan says at a glance what needs him now. Every alert is one of three: overdue, due within 24 hours, or reminder reached. It shows as a bell, red or amber, and stays until the task is completed, archived or snoozed. Snooze is the answer to an alert: click the bell, pick how long, and the line goes quiet but stays where it is. Icons replace most of the words on a scan line, and the table uses the same icons. These are items 5 and 6 of the priority list. The API already accepts `snoozedUntil` on `PATCH`, so there's no API change.
+
+**Out of scope:** an alert count in the header or on the Today tab, starting a snooze from the edit dialog (a snooze in a form is one click from quieting a sign-off for a month; the dialog can only end one), custom snooze times, an icon for archived tasks, notifications of any kind.
+
+### Rules
+
+- **Three alerts, one rule each.** For open tasks only (not completed, not archived):
+  - **Overdue:** the deadline has passed. Red.
+  - **Reminder:** `remindAt` has been reached. Amber.
+  - **Due soon:** the deadline is in the next 24 hours and the task has no reminder. Amber.
+- **His reminder wins.** A task with a reminder never gets the due-soon alert: he already chose when to be told, so the app doesn't guess earlier. Due soon catches the tasks with no reminder, which would otherwise stay quiet until they're overdue. It also means every alerting task with a reminder has already reached it, so any snooze ends after the reminder and the `snooze_after_reminder` check can't reject one.
+  - When more than one applies, the first wins: overdue, then reminder (he set it himself), then due soon.
+- **Amber now means "act on this soon": reminder reached or due within 24 hours.** Red stays overdue only. The colour rule in CLAUDE.md is updated to match.
+- **Snooze quiets the alert, never the task.** A snoozed task keeps its place in the scan and the table. It loses the red or amber tint and shows the snooze icon instead of the bell. When the snooze ends, the alert comes back by itself, because it's derived from the dates and nothing is cleared.
+- **A snooze never hides a deadline passing.** When a task isn't overdue yet, the snooze ends at its deadline at the latest ("until 20:00 (deadline)"). So a due-soon task snoozed for the night turns red the minute it goes overdue: the missed sign-off can't happen under a snooze. An overdue task can still be snoozed: it's a choice he makes, and it ends.
+- **Snooze options:** 30 minutes, 1 hour, 3 hours, 6 hours, 8 hours (from now), and Tomorrow morning. All are guesses to check with Maverick.
+  - **Tomorrow morning is a clock time, not a length:** 07:00 the next day, local time (21 hours away at 10:00, 8 hours at 23:00). Before 07:00 it becomes "This morning, 07:00", because at 01:00 that's what he means.
+  - **Each option shows when it ends** ("3 hours · until 13:00", "Tomorrow morning · 07:00"), and "(deadline)" when it's capped.
+- **`snoozedUntil` stays as it is: the time the snooze ends.** The option is only how he picks it; the browser turns it into a time, and that's what gets saved. Storing an offset would need a second column for when he clicked, and every check would have to add them up. No schema change.
+- **Where snooze lives: on the bell.** On an alerting task, the bell is a button (scan line and table Status cell) that opens a small menu with the options. On a snoozed task, the snooze icon is the button: "End snooze", then the options to snooze again. Each choice saves at once (`PATCH snoozedUntil`), updates the `tasks` cache and closes the menu. If the save fails, the menu stays open with the error in red.
+- **Icons**, inline SVG in one file, all 16px, each with an `aria-label` and a `title` tooltip carrying the words they replace:
+
+  | Icon | Meaning | Colour | Shown in |
+  | --- | --- | --- | --- |
+  | Bell | Overdue | red | scan, table, dialog |
+  | Bell | Reminder reached or due soon | amber | scan, table, dialog |
+  | Bell with a slash | Snoozed (running) | grey | scan, table, dialog |
+  | Check | Completed | green | table, dialog (the scan shows open tasks only) |
+
+  **Pinned keeps the 📌 emoji**, as it is now: pinned tasks matter most, so the pin should stand out, not look greyed out. Its red is a small glyph, not a tint, and it's been there since Part 3.
+- **One icon slot, fixed width, at the start of each scan line.** The bells line up in a column, so the eye can run down it. A line with no alert has an empty slot, so the titles still line up.
+- **The scan line, two lines at most:**
+  - Line 1: icon slot, title, pin, High, In progress, New, then the category on the right.
+  - Line 2: the deadline ("Due 14:00"), red if overdue and amber if due soon. The words "Overdue · was due" go: the red bell and the red time say it, and the bell's label says it in words. The reminder shows only when it's the alert ("Reminder 07:00 · Due Fri 20:00") or the task has no deadline. A reminder that hasn't gone off yet only shows in the dialog. A snoozed task adds "Snoozed until 15:00" in grey on this line, not on a third line.
+- **Table:** the icon goes at the start of the Status cell, before the status word: red bell + "Not started", green check + "Completed". It replaces the red "Overdue" tag. The row tint follows the scan: red, amber, none when snoozed; completed and archived stay as they are. The Deadline cell is amber when due soon (red when overdue, as now).
+- **Two more Status filter options, after New:** "Alerting" (an alert showing now, not snoozed) and "Snoozed" (a running snooze). They sit in the Status dropdown like New does, so the toolbar keeps two dropdowns.
+- **Dialog facts line:** the same icon in front of the existing text ("Overdue · was due …", "Due soon · 14:00", "Reminder since …", "Snoozed until …", "Completed …").
+- **End snooze in the dialog, applied on Save.** A running snooze shows "Snoozed until … [End snooze]" in the facts line. Clicking it marks the snooze to end, shows "Snooze ends" (amber, like the other form warnings), and Save sends `snoozedUntil: null` with the rest of the form. Cancel leaves it as it was. Ending a snooze only makes an alert louder, so it's safe in a form; starting one stays on the bell. The form already ends a snooze when a date changes, so it's the same patch.
+- **Seed:** no change. Task 47 (overdue, snoozed for 2 days) shows the quiet snoozed line in Today; task 11 (reminder reached, snoozed until tomorrow) shows it in Reminders. Today and Tomorrow tasks without a reminder give a few amber due-soon lines, depending on the time of the demo.
+
+### Layout
+
+```
+  ▾ Today  Wed 18 Nov (4 Tasks)
+  🔔 Inspect the tow bar adapter  📌 High New               Maintenance   ← red bell, red tint
+     Due Mon 16 Nov 20:00
+  🔔 Review discrepancy book for 204   High  In progress    Flight        ← amber bell, amber tint
+     Due 14:00
+  🔕 Maintenance sign-off, jet 211                          Maintenance   ← grey, no tint
+     Due Fri 6 Nov 20:00 · Snoozed until Fri 20 Nov 07:00
+     Morning det brief             High                     Admin         ← empty slot: no alert
+     Due 20:00
+
+  Click a bell (at 10:00):              Click a snooze icon:
+  ┌────────────────────────────────┐   ┌────────────────────────────────┐
+  │ 30 minutes · until 10:30       │   │ End snooze                     │
+  │ 1 hour · until 11:00           │   │ ────────────────────────────── │
+  │ 3 hours · until 13:00          │   │ 30 minutes · until 10:30       │
+  │ 6 hours · until 16:00          │   │ …the same options              │
+  │ 8 hours · until 18:00          │   └────────────────────────────────┘
+  │ Tomorrow morning · Thu 07:00   │
+  └────────────────────────────────┘
+  Due at 15:00: "6 hours · until 15:00 (deadline)", and the same for 8 hours and Tomorrow morning.
+
+  Dialog facts line:  🔕 Snoozed until Thu 07:00  [End snooze]   →  "Snooze ends" until Save
+  Table Status cell:  🔔 Not started  New   |  ✓ Completed  |  🔕 In progress
+```
+
+### 7.1 Task helpers: `web/src/helpers/taskHelpers.ts` (+ tests)
+
+- `DUE_SOON_MS = 24 h`; `isDueSoon(task, now)`: open, no reminder, deadline after now and within 24 hours.
+- `alertReason(task, now)`: `'overdue' | 'reminder' | 'soon' | null`, ignoring snooze (what *would* alert).
+- `alertState(task, now)`: `alertReason` unless `isSnoozed`, then `null`. It stays the one function behind colour, so the existing callers become snooze-aware without changes.
+- `STATUS_FILTERS` gets `'Alerting'` and `'Snoozed'`; `matchesStatus` uses `alertState` and `isSnoozed` (open tasks only).
+- Tests: due in 23 h → soon; in 25 h → none; due in 23 h with a reminder still ahead → none; overdue beats reminder beats soon; completed or archived → none; snoozed → `alertState` null and `alertReason` unchanged; expired snooze → alerting again; the Alerting and Snoozed filters.
+
+### 7.2 Snooze helpers: `web/src/helpers/snooze.ts` (+ tests)
+
+- `SNOOZE_OPTIONS`: 30 min, 1 h, 3 h, 6 h, 8 h, morning. `snoozeOptions(task, now)`: `[{ label, until, capped }]`, capped at the deadline when the deadline is still ahead.
+- `nextMorning(now)`: 07:00 today if before 07:00 ("This morning"), otherwise 07:00 tomorrow ("Tomorrow morning"). Uses date-fns, so a daylight-saving change is handled.
+- Tests: 30 minutes and 8 hours from 10:00; tomorrow morning at 10:00 and 23:30 → 07:00 next day; at 01:00 → "This morning", 07:00 the same day; due at 15:00 from 10:00 → 6 h, 8 h and morning capped at 15:00, 3 h not; overdue task → none capped; every option of an alerting task with a reminder ends after the reminder.
+
+### 7.3 Icons: `web/src/components/shared/Icons.tsx`
+
+- `BellIcon`, `BellOffIcon`, `CheckIcon`: inline SVG, `currentColor`, 16px, path data from Lucide (ISC licence, noted in the file). No new dependency, so the Docker build doesn't change.
+- `SignalIcon` draws one; `taskSignal` and `signalLabel` (in `taskHelpers.ts`, so the component file only exports components) pick it and its words ("Overdue, was due Mon 16 Nov, 20:00").
+
+### 7.4 Snooze menu: `web/src/components/shared/SnoozeMenu.tsx` (+ tests)
+
+- Wraps `TaskIcon` in a button when the task is alerting or snoozed. `aria-haspopup="menu"` and `aria-expanded`; a `role="menu"` list; arrow keys move between items, Escape or a click outside closes it, and focus returns to the button.
+- `useMutation` with `updateTask(id, { snoozedUntil })`, writing the saved task into the `tasks` cache (as the edit dialog does).
+- Tests: the bell opens six options, each with its end time; choosing "3 hours" PATCHes `now + 3h` once and closes; the snooze icon shows End snooze first, which PATCHes `null`; a 422 keeps the menu open with the error; Escape closes and returns focus.
+
+### 7.5 Scan, table and dialog
+
+- `scan/TaskLine.tsx`: the icon slot with `SnoozeMenu`, the slimmed second line, category moved to line 1. The amber tint for `'soon'` too.
+- `table/TaskTable.tsx`: `SnoozeMenu` at the start of the Status cell instead of the Overdue tag; `rowTone` and the Deadline cell handle `'soon'`.
+- `dialog/TaskFacts.tsx`: `TaskIcon` in front of each fact; a "Due soon" fact; the End snooze button next to "Snoozed until …" (hidden once marked).
+- `helpers/taskForm.ts` (+ tests): an `endSnooze` flag in the form values; `planSave` sends `snoozedUntil: null` and sets `snoozeEnds` when it's on. Tests: End snooze alone patches only `snoozedUntil`; with a title edit, both go in one patch; not marked → no `snoozedUntil` in the patch.
+- `dialog/TaskDialog.tsx` (+ tests): wires the button; "Snooze ends" shows for End snooze as well as for a date change. Test: End snooze, Save → one PATCH with `snoozedUntil: null`; End snooze, Cancel → nothing sent.
+- Tests: TaskLine: an overdue line shows a red bell and no "Overdue ·" text; a snoozed overdue line has no tint and shows "Snoozed until"; a pending reminder isn't shown. TaskTable: completed shows the check; the Alerting filter lists only unsnoozed alerts; the Snoozed filter lists task 47's kind.
+
+### 7.6 Docs
+
+- CLAUDE.md: the alert rule (due soon only without a reminder), the colour rule (amber includes due soon, snoozed loses its tint), the icons, the six snooze options and the cap at the deadline, End snooze in the dialog, the two new Status filter options.
+- DECISIONS.md: written by the author.
+
+### 7.7 Verify
+
+- [x] `npm test`, `npm run lint`, `npm run build` pass.
+- [x] Fresh seed: overdue lines show a red bell; Today and Tomorrow tasks within 24 hours show an amber bell; task 47 shows the snooze icon with no tint; no line has more than two lines of text at desktop width.
+- [x] Snooze an overdue task for 3 hours: tint and bell go, "Snoozed until …" shows, it stays in Today. End snooze from the menu: covered by `SnoozeMenu.test.tsx` (sends `null`), not clicked in the browser.
+- [ ] Snooze a due-soon task "Tomorrow morning" when the deadline is tonight: the option reads "until 20:00 (deadline)"; after a save with the deadline a minute ahead, it turns red when the minute passes. Not driven in the browser (the demo clock was past most deadlines); the cap and the return to red are covered by `snooze.test.ts` and `taskHelpers.test.ts`.
+- [ ] A task due today with a reminder still ahead: no bell. When the reminder is reached: amber bell; every snooze option saves. Covered by `taskHelpers.test.ts` and `snooze.test.ts`; not seen in the browser (no such task in the seed at 17:45).
+- [x] Dialog on a snoozed task: End snooze shows "Snooze ends"; Cancel keeps the snooze; Save ends it and the bell comes back.
+- [x] All tasks: Status filter Alerting and Snoozed; icons in the Status cell; the completed check is green.
+- [x] Keyboard: focus a bell, Enter opens, arrows move, Escape closes and focus returns to the bell. Icon labels are `aria-label`s (checked in tests); not tried with a real screen reader.
+- [x] Phone width (390px): the menu fits without sideways scroll.
+- [x] `docker compose up --build` serves it at <http://localhost:8000>; then `docker compose down -v` to re-seed.
+
+Also fixed here: the scan line first showed a reached reminder on overdue lines too ("Reminder Sun 15 Nov"); it now shows only when the reminder is the alert, as planned.
+
+Changed after review: New became a violet sparkles icon right after the title, in the scan and the table's Title cell (it was a tag next to High and In progress in the scan, and in the table's Status cell). Scan line 2 got lighter: only the deadline is spelled out; the reminder and the snooze end are a small icon (alarm clock, crossed-out bell) and a short time ("07:00", "Thu 07:00"), grey unless they're the alert. Checked in the browser on 2026-11-18 at 18:35 with two new tasks, one High and In progress. The dialog's top got lighter too: one short line under the heading, saying how far off the date is ("Overdue by 12 days", "Due in 1 hour", "Snoozed until Fri 07:00 · overdue by 11 days", then End snooze as a link), or nothing; the exact time is in the tooltip and the fields. "Created …" moved to small print above the buttons.
+
+Verified 2026-11-18 at 17:45 New York time, driven in headless Chrome against `docker compose up --build`, then re-seeded with `down -v`. Tests: 119.

@@ -29,7 +29,9 @@ import {
   type TaskStatus,
 } from '../../helpers/taskHelpers'
 import type { Task } from '../../types'
-import { NewTag } from '../shared/NewTag'
+import { ACCENT_BUTTON } from '../dialog/styles'
+import { NewIcon } from '../shared/Icons'
+import { SnoozeMenu } from '../shared/SnoozeMenu'
 import { Tag } from '../shared/Tag'
 import { TitleButton } from '../shared/TitleButton'
 import { TaskTableToolbar } from './TaskTableToolbar'
@@ -91,7 +93,13 @@ function makeColumns(now: Date, onOpen: (id: number) => void) {
     helper.accessor('title', {
       header: 'Title',
       sortFn: 'text',
-      cell: ({ row }) => <TitleButton task={row.original} onOpen={onOpen} />,
+      // New sits next to the title, as in the scan.
+      cell: ({ row }) => (
+        <span className="flex items-center gap-1.5">
+          <TitleButton task={row.original} onOpen={onOpen} />
+          {isNew(row.original, now) && <NewIcon />}
+        </span>
+      ),
     }),
     helper.accessor((t) => STATUS_RANK[taskStatus(t)], {
       id: 'status',
@@ -100,13 +108,11 @@ function makeColumns(now: Date, onOpen: (id: number) => void) {
       // The Status dropdown sets this filter.
       filterFn: (row, _id, value: StatusFilter) =>
         matchesStatus(row.original, value, now),
+      // The icon first (the bell is the snooze button, as in the scan), then the status.
       cell: ({ row }) => (
-        <span className="flex flex-wrap items-center gap-1">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <SnoozeMenu task={row.original} now={now} />
           {taskStatus(row.original)}
-          {alertState(row.original, now) === 'overdue' && (
-            <Tag className="bg-red-600 text-white">Overdue</Tag>
-          )}
-          {isNew(row.original, now) && <NewTag />}
         </span>
       ),
     }),
@@ -141,12 +147,14 @@ function makeColumns(now: Date, onOpen: (id: number) => void) {
       cell: ({ row }) => {
         const { deadline } = row.original
         if (!deadline) return null
-        const overdue = alertState(row.original, now) === 'overdue'
-        return (
-          <span className={overdue ? 'font-semibold text-red-700' : ''}>
-            {when(deadline, now)}
-          </span>
-        )
+        const alert = alertState(row.original, now)
+        const tone =
+          alert === 'overdue'
+            ? 'font-semibold text-red-700'
+            : alert === 'soon'
+              ? 'font-semibold text-amber-800'
+              : ''
+        return <span className={tone}>{when(deadline, now)}</span>
       },
     }),
     helper.accessor((t) => time(t.remindAt), {
@@ -175,18 +183,20 @@ function makeColumns(now: Date, onOpen: (id: number) => void) {
 }
 
 /**
- * Row color. Red and amber are alerts (open tasks only), the same as the scan.
+ * Row color. Red and amber are alerts (open tasks only), the same as the scan; a snoozed
+ * task has no tint.
  * Completed is muted green (done, something good); archived is muted grey.
  * The colored bar on the left is an inset shadow, because table rows can't take a border.
  */
 function rowTone(task: Task, now: Date): string {
   const status = taskStatus(task)
   if (status === 'Archived') return 'bg-gray-50 text-gray-400'
-  if (status === 'Completed') return 'bg-green-50 text-green-800'
+  if (status === 'Completed')
+    return 'bg-green-50 text-green-800 shadow-[inset_4px_0_0_var(--color-green-600)]'
   const alert = alertState(task, now)
   if (alert === 'overdue')
     return 'bg-red-50 shadow-[inset_4px_0_0_var(--color-red-600)]'
-  if (alert === 'reminder')
+  if (alert === 'reminder' || alert === 'soon')
     return 'bg-amber-50 shadow-[inset_4px_0_0_var(--color-amber-500)]'
   return 'bg-white'
 }
@@ -268,11 +278,7 @@ export function TaskTable({
           className="flex items-center gap-3 text-sm text-gray-500"
         >
           No tasks match.
-          <button
-            type="button"
-            onClick={clear}
-            className="rounded border border-gray-300 bg-white px-2 py-1 text-gray-700 hover:bg-gray-100"
-          >
+          <button type="button" onClick={clear} className={ACCENT_BUTTON}>
             Clear search and filters
           </button>
         </p>

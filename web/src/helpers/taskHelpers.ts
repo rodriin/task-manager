@@ -10,6 +10,7 @@ import {
   startOfDay,
 } from 'date-fns'
 import type { Status, Task } from '../types'
+import { day, when } from './formatDates'
 
 /** Open = not completed and not archived. Only open tasks appear in the scan. */
 export function isOpen(task: Task): boolean {
@@ -35,6 +36,20 @@ export function isSnoozed(task: Task, now: Date): boolean {
   return (
     task.snoozedUntil !== null && task.snoozedUntil.getTime() > now.getTime()
   )
+}
+
+/** How far ahead "due soon" looks. */
+export const DUE_SOON_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Due soon = open, no reminder, and the deadline is in the next 24 hours. A task with a reminder
+ * alerts by its reminder instead: he already chose when to be told, so the app doesn't guess.
+ */
+export function isDueSoon(task: Task, now: Date): boolean {
+  if (!isOpen(task) || task.remindAt !== null || task.deadline === null)
+    return false
+  const left = task.deadline.getTime() - now.getTime()
+  return left > 0 && left <= DUE_SOON_MS
 }
 
 /** How long a task counts as New after it's created. */
@@ -127,18 +142,53 @@ export function buildScan(tasks: Task[], now: Date): Scan {
   return scan
 }
 
+export type Alert = 'overdue' | 'reminder' | 'soon'
+
 /**
- * The alert a task is showing right now, if any. Drives the colour everywhere:
- * red = overdue, amber = reminder reached (and not overdue).
- * Completed and archived tasks never alert.
+ * Why a task would alert, ignoring any snooze. The first that applies wins: overdue, then the
+ * reminder (he set it himself), then due soon. Completed and archived tasks never alert.
  */
-export function alertState(
-  task: Task,
-  now: Date,
-): 'overdue' | 'reminder' | null {
+export function alertReason(task: Task, now: Date): Alert | null {
   if (!isOpen(task)) return null
   if (isOverdue(task, now)) return 'overdue'
   if (isReminderActive(task, now)) return 'reminder'
+  if (isDueSoon(task, now)) return 'soon'
+  return null
+}
+
+/**
+ * The alert a task is showing right now, if any. Drives the color and the bell everywhere:
+ * red = overdue, amber = reminder reached or due soon. A running snooze quiets it (null); the
+ * task stays where it is, and the alert comes back by itself when the snooze ends.
+ */
+export function alertState(task: Task, now: Date): Alert | null {
+  return isSnoozed(task, now) ? null : alertReason(task, now)
+}
+
+/** The icon a task shows: a red or amber bell, the snoozed bell, the done check, or none. */
+export type Signal = 'overdue' | 'warning' | 'snoozed' | 'done'
+
+export function taskSignal(task: Task, now: Date): Signal | null {
+  if (task.archivedAt !== null) return null
+  if (task.completedAt !== null) return 'done'
+  if (isSnoozed(task, now)) return 'snoozed'
+  const alert = alertReason(task, now)
+  if (alert === 'overdue') return 'overdue'
+  return alert ? 'warning' : null
+}
+
+/** The words an icon stands for, e.g. "Overdue, was due Mon 16 Nov, 20:00". */
+export function signalLabel(task: Task, now: Date): string | null {
+  const signal = taskSignal(task, now)
+  if (signal === 'done') return `Completed ${day(task.completedAt!, now)}`
+  if (signal === 'snoozed')
+    return `Snoozed until ${when(task.snoozedUntil!, now)}`
+  const reason = alertReason(task, now)
+  if (reason === 'overdue')
+    return `Overdue, was due ${when(task.deadline!, now)}`
+  if (reason === 'reminder')
+    return `Reminder since ${when(task.remindAt!, now)}`
+  if (reason === 'soon') return `Due soon, ${when(task.deadline!, now)}`
   return null
 }
 
@@ -159,11 +209,14 @@ export function taskStatus(task: Task): TaskStatus {
 
 /**
  * Options of the Status filter. Open = Not started plus In progress. New = the tasks showing
- * the New tag (open, created in the past 24 hours), overdue ones included.
+ * the New tag (open, created in the past 24 hours), overdue ones included. Alerting = a bell
+ * showing now (not snoozed); Snoozed = a running snooze. Like New, these aren't stored statuses.
  */
 export const STATUS_FILTERS = [
   'Open',
   'New',
+  'Alerting',
+  'Snoozed',
   'Not started',
   'In progress',
   'Completed',
@@ -178,6 +231,8 @@ export function matchesStatus(
 ): boolean {
   if (filter === 'Open') return isOpen(task)
   if (filter === 'New') return isNew(task, now)
+  if (filter === 'Alerting') return alertState(task, now) !== null
+  if (filter === 'Snoozed') return isOpen(task) && isSnoozed(task, now)
   return taskStatus(task) === filter
 }
 /** Options of the Deadline filter. Each is checked on its own, so they can overlap. */

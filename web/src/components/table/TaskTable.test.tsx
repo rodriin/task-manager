@@ -1,7 +1,24 @@
-import { render, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  render as renderPlain,
+  screen,
+  within,
+  type RenderOptions,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Task } from '../../types'
 import { TaskTable } from './TaskTable'
+
+/** Renders with a query client: the bell's snooze menu saves through it. */
+const render = (ui: React.ReactElement, options?: RenderOptions) =>
+  renderPlain(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={new QueryClient()}>
+        {children}
+      </QueryClientProvider>
+    ),
+    ...options,
+  })
 
 // Fixed "now": Tuesday 17 Nov 2026, 10:00 local time.
 const NOW = new Date(2026, 10, 17, 10, 0)
@@ -113,7 +130,11 @@ describe('TaskTable', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Deadline'), 'Overdue')
     expect(titles()).toEqual(['Task 1'])
-    expect(within(screen.getByRole('table')).getByText('Overdue')).toBeVisible() // the red tag
+    expect(
+      within(screen.getByRole('table')).getByRole('button', {
+        name: /^Overdue/,
+      }),
+    ).toBeVisible() // the red bell
 
     await userEvent.selectOptions(screen.getByLabelText('Deadline'), 'Later')
     expect(screen.getByText('No tasks match.')).toBeInTheDocument()
@@ -123,7 +144,7 @@ describe('TaskTable', () => {
     expect(titles()).toHaveLength(3)
   })
 
-  it('tags new tasks, next to Overdue when both, and the New filter lists them all', async () => {
+  it('marks new tasks with the New icon next to the title, and the New filter lists them all', async () => {
     const hourAgo = new Date(NOW.getTime() - 60 * 60 * 1000)
     const tasks = [
       task(1, { createdAt: hourAgo }), // new
@@ -131,15 +152,48 @@ describe('TaskTable', () => {
       task(3), // old
     ]
     render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
-    const statusCell = (row: number) =>
-      within(screen.getAllByRole('row')[row]).getAllByRole('cell')[2]
+    const cell = (row: number, column: number) =>
+      within(screen.getAllByRole('row')[row]).getAllByRole('cell')[column]
 
-    expect(within(statusCell(1)).getByText('New')).toBeVisible()
-    expect(within(statusCell(2)).getByText('New')).toBeVisible()
-    expect(within(statusCell(2)).getByText('Overdue')).toBeVisible()
-    expect(within(statusCell(3)).queryByText('New')).toBeNull()
+    expect(within(cell(1, 1)).getByRole('img', { name: 'New' })).toBeVisible()
+    expect(within(cell(2, 1)).getByRole('img', { name: 'New' })).toBeVisible()
+    expect(
+      within(cell(2, 2)).getByRole('button', { name: /^Overdue/ }),
+    ).toBeVisible()
+    expect(within(cell(3, 1)).queryByRole('img', { name: 'New' })).toBeNull()
+    expect(titles()).toEqual(['Task 1', 'Task 2', 'Task 3']) // the icon adds no text
 
     await userEvent.selectOptions(screen.getByLabelText('Status'), 'New')
     expect(titles()).toEqual(['Task 1', 'Task 2'])
+  })
+
+  it('shows the icon in the Status cell, and filters by Alerting and Snoozed', async () => {
+    const tasks = [
+      task(1, { deadline: at(16) }), // overdue: red bell
+      task(2, { deadline: at(17, 20) }), // due soon: amber bell
+      task(3, { deadline: at(16), snoozedUntil: at(17, 15) }), // snoozed
+      task(4, { completedAt: at(16) }), // done: check
+      task(5, { deadline: at(25) }), // later: no icon
+    ]
+    render(<TaskTable tasks={tasks} now={NOW} onOpen={() => {}} />)
+    const statusCell = (row: number) =>
+      within(screen.getAllByRole('row')[row]).getAllByRole('cell')[2]
+
+    expect(
+      within(statusCell(2)).getByRole('button', { name: /^Due soon/ }),
+    ).toBeVisible()
+    expect(
+      within(statusCell(3)).getByRole('button', { name: /^Snoozed until/ }),
+    ).toBeVisible()
+    expect(
+      within(statusCell(4)).getByRole('img', { name: /^Completed/ }),
+    ).toBeVisible()
+    expect(within(statusCell(5)).queryByRole('button')).toBeNull()
+    expect(screen.getAllByRole('row')[3]).not.toHaveClass('bg-red-50') // snoozed: no tint
+
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'Alerting')
+    expect(titles()).toEqual(['Task 1', 'Task 2'])
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'Snoozed')
+    expect(titles()).toEqual(['Task 3'])
   })
 })

@@ -34,7 +34,7 @@ import { Checkbox } from './Checkbox'
 import { DateTimeField } from './DateTimeField'
 import { FieldError } from './FieldError'
 import { Select } from './Select'
-import { TaskFacts } from './TaskFacts'
+import { TaskDates, TaskState } from './TaskFacts'
 import {
   ACCENT_BUTTON,
   FIELD,
@@ -197,9 +197,20 @@ export function TaskDialog({ mode, now, onClose, onClone, onCreated }: Props) {
     >
       <form onSubmit={submit} className="flex flex-col gap-4 p-5" noValidate>
         <div className="flex items-start justify-between gap-3">
-          <h2 id={ids.heading} className="text-lg font-semibold">
-            {HEADINGS[mode.kind]}
-          </h2>
+          {/* The heading, and right under it the task's state in one short line. */}
+          <div className="flex flex-col gap-1">
+            <h2 id={ids.heading} className="text-lg font-semibold">
+              {HEADINGS[mode.kind]}
+            </h2>
+            {task && (
+              <TaskState
+                task={task}
+                now={now}
+                snoozeEnding={values.endSnooze}
+                onEndSnooze={() => set('endSnooze', true)}
+              />
+            )}
+          </div>
           <button
             type="button"
             aria-label="Close"
@@ -209,8 +220,6 @@ export function TaskDialog({ mode, now, onClose, onClone, onCreated }: Props) {
             ✕
           </button>
         </div>
-
-        {task && <TaskFacts task={task} now={now} />}
 
         {task && locked && (
           <p className="rounded bg-gray-100 px-3 py-2 text-sm text-gray-700">
@@ -332,7 +341,9 @@ export function TaskDialog({ mode, now, onClose, onClone, onCreated }: Props) {
           />
           {editPlan?.snoozeEnds && (
             <p className={WARNING} aria-live="polite">
-              Snooze ends: the dates changed.
+              {values.endSnooze
+                ? 'Snooze ends when saved.'
+                : 'Snooze ends: the dates changed.'}
             </p>
           )}
 
@@ -363,6 +374,8 @@ export function TaskDialog({ mode, now, onClose, onClone, onCreated }: Props) {
             onChange={toggleArchived}
           />
         )}
+
+        {task && <TaskDates task={task} now={now} />}
 
         <p role="alert" className="text-sm text-red-700 empty:hidden">
           {save.isError

@@ -163,6 +163,47 @@ describe('TaskDialog', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('End snooze says so, and Save ends the snooze in one PATCH', async () => {
+    const t = task({ deadline: at(16, 20), snoozedUntil: at(17, 15) })
+    fetchMock.mockResolvedValue(okResponse(asJson(t, { snoozedUntil: null })))
+    open(t)
+
+    expect(screen.getByText('Snoozed until 15:00')).toBeVisible()
+    expect(screen.getByText('· overdue by 14 hours')).toHaveClass('text-red-700')
+    await userEvent.click(screen.getByRole('button', { name: 'End snooze' }))
+    expect(screen.getByText('Snooze ends when saved.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'End snooze' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(sentPatch()).toEqual({ snoozedUntil: null })
+  })
+
+  it('says the state in one short line, and the created date in small print', () => {
+    open(task({ deadline: at(10, 20), createdAt: at(1) }))
+    expect(screen.getByText('Overdue by 6 days')).toHaveAttribute(
+      'title',
+      'Was due Tue 10 Nov, 20:00',
+    )
+    expect(screen.getByText('Created Sun 1 Nov')).toBeVisible()
+  })
+
+  it('shows nothing under the heading when there is no alert, snooze or completion', () => {
+    open(task({ deadline: at(25, 20) }))
+    expect(
+      screen.queryByText(/Overdue|Due in|Reminder since|Snoozed/),
+    ).toBeNull()
+  })
+
+  it('End snooze then Cancel sends nothing', async () => {
+    const { onClose } = open(
+      task({ deadline: at(16, 20), snoozedUntil: at(17, 15) }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'End snooze' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onClose).toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('opens an archived task locked, except for Archived', () => {
     open(task({ archivedAt: at(10) }))
     expect(screen.getByText(/Untick Archived to edit/)).toBeInTheDocument()

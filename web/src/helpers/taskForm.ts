@@ -33,6 +33,8 @@ export interface FormValues {
   pinned: boolean
   completed: boolean
   archived: boolean
+  /** End snooze was clicked: the save ends the running snooze. Not a field; it starts off. */
+  endSnooze: boolean
 }
 
 const dateOf = (date: Date | null) => (date ? format(date, 'yyyy-MM-dd') : '')
@@ -54,6 +56,7 @@ export function toFormValues(task: Task): FormValues {
     pinned: task.pinned,
     completed: task.completedAt !== null,
     archived: task.archivedAt !== null,
+    endSnooze: false,
   }
 }
 
@@ -139,7 +142,7 @@ export interface SavePlan {
   errors: FormErrors
   /** Set when the save will move the reminder (the deadline moved before it). */
   reminderMovesTo: Date | null
-  /** True when the save will end a running snooze (the dates changed). */
+  /** True when the save will end a running snooze (End snooze, or the dates changed). */
   snoozeEnds: boolean
 }
 
@@ -238,6 +241,8 @@ function readForm(
  * - Completed and Archived become timestamps (`now`) or null.
  * - Changing the deadline or reminder clears any stored snooze, running or expired: the alerts
  *   follow the new dates, and the database checks a snooze against them.
+ * - End snooze clears it too. Ending a snooze only makes an alert louder, so it's safe in a form;
+ *   starting one happens on the bell.
  * - A reminder typed by hand is never moved; one after the deadline is an error.
  */
 export function planSave(task: Task, values: FormValues, now: Date): SavePlan {
@@ -300,6 +305,10 @@ export function planSave(task: Task, values: FormValues, now: Date): SavePlan {
     patch.snoozedUntil = null
     plan.snoozeEnds = isSnoozed(task, now)
   }
+  if (values.endSnooze && task.snoozedUntil !== null) {
+    patch.snoozedUntil = null
+    plan.snoozeEnds = true
+  }
   return plan
 }
 
@@ -318,6 +327,7 @@ export const EMPTY_VALUES: FormValues = {
   pinned: false,
   completed: false,
   archived: false,
+  endSnooze: false,
 }
 
 /**
@@ -332,6 +342,7 @@ export function toCloneValues(values: FormValues): FormValues {
     status: 'Not started',
     completed: false,
     archived: false,
+    endSnooze: false,
   }
 }
 

@@ -1,5 +1,5 @@
 // Shared looks for the dialog's fields and buttons.
-// No width or colour in the base styles: two Tailwind classes for the same property
+// No width or color in the base styles: two Tailwind classes for the same property
 // (w-full and w-auto, bg-white and bg-blue-600) don't override each other by order.
 export const FIELD =
   'rounded border border-gray-300 bg-white px-2 py-1 disabled:bg-gray-100 disabled:text-gray-500'

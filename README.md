@@ -62,7 +62,7 @@ Type `\q` to leave. More checks are in [PLAN.md](PLAN.md).
 
 ## First-cut scope
 
-In priority order. Anything beyond these will be built only if time allowed.
+In priority order. Items 1–7 were the first cut and 8–13 were "if time allows"; all 13 were built.
 
 1. Today and tomorrow view: what is now and what is next
 2. Full task list with the minimum useful information per row

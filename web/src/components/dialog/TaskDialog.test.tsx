@@ -169,7 +169,9 @@ describe('TaskDialog', () => {
     open(t)
 
     expect(screen.getByText('Snoozed until 15:00')).toBeVisible()
-    expect(screen.getByText('· overdue by 14 hours')).toHaveClass('text-red-700')
+    expect(screen.getByText('· overdue by 14 hours')).toHaveClass(
+      'text-red-700',
+    )
     await userEvent.click(screen.getByRole('button', { name: 'End snooze' }))
     expect(screen.getByText('Snooze ends when saved.')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'End snooze' })).toBeNull()
